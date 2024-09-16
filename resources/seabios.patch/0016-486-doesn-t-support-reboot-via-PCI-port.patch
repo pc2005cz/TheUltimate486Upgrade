@@ -1,0 +1,28 @@
+From 5bdf31c4f0815b2a5159990c3d872362076c886e Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:30:07 +0200
+Subject: [PATCH 16/27] 486 doesn't support reboot via PCI port
+
+---
+ src/hw/pci.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/hw/pci.c b/src/hw/pci.c
+index 8eda84b2..a222d6d8 100644
+--- a/src/hw/pci.c
++++ b/src/hw/pci.c
+@@ -227,9 +227,11 @@ pci_probe_host(void)
+ void
+ pci_reboot(void)
+ {
++#if 0   //pc2005 not supported
+     u8 v = inb(PORT_PCI_REBOOT) & ~6;
+     outb(v|2, PORT_PCI_REBOOT); /* Request hard reset */
+     udelay(50);
+     outb(v|6, PORT_PCI_REBOOT); /* Actually do the reset */
+     udelay(50);
++#endif
+ }
+-- 
+2.46.1
+

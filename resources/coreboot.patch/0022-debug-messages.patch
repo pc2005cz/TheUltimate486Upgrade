@@ -1,0 +1,1523 @@
+From 412fc01d19561253ba7ba40672f62435ddf0a601 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:29:19 +0200
+Subject: [PATCH 22/26] debug messages
+
+---
+ src/commonlib/bsd/cbfs_private.c   |  49 ++++++++++-
+ src/console/init.c                 |  37 ++++++++-
+ src/console/post.c                 |  39 +++++++++
+ src/console/vtxprintf.c            |  41 ++++++++++
+ src/device/device.c                |  27 +++++--
+ src/device/pci_device.c            |   3 +
+ src/device/resource_allocator_v4.c |  12 +--
+ src/lib/bootblock.c                | 106 ++++++++++++++++++++++++
+ src/lib/cbfs.c                     | 126 +++++++++++++++++++++++++++--
+ src/lib/coreboot_table.c           |  16 +++-
+ src/lib/hardwaremain.c             |  25 ++++++
+ src/lib/imd_cbmem.c                |  27 ++++++-
+ src/lib/prog_loaders.c             |  51 ++++++++++++
+ src/lib/rmodule.c                  |  47 ++++++++++-
+ util/cbfstool/cbfs-mkstage.c       |  12 ++-
+ util/cbfstool/cbfs_image.c         |   7 +-
+ util/cbfstool/cbfstool.c           |  41 ++++++++--
+ util/cbfstool/lzma/lzma.c          |   2 +
+ util/cbfstool/rmodule.c            |   6 ++
+ 19 files changed, 634 insertions(+), 40 deletions(-)
+
+diff --git a/src/commonlib/bsd/cbfs_private.c b/src/commonlib/bsd/cbfs_private.c
+index 7ad29861df..c3d5b822d9 100644
+--- a/src/commonlib/bsd/cbfs_private.c
++++ b/src/commonlib/bsd/cbfs_private.c
+@@ -7,14 +7,31 @@
+ static enum cb_err read_next_header(cbfs_dev_t dev, size_t *offset, struct cbfs_file *buffer,
+ 				    const size_t devsize)
+ {
+-	DEBUG("Looking for next file @%#zx...\n", *offset);
++	DEBUG("Looking for next file @%#zx\n", *offset);
++	// DEBUG("Looking for next file @%#zx s:%#zx\n", *offset, devsize);
+ 	*offset = ALIGN_UP(*offset, CBFS_ALIGNMENT);
++
++	// printk(BIOS_DEBUG, "F0\n");
++
+ 	while (*offset + sizeof(*buffer) < devsize) {
+-		if (cbfs_dev_read(dev, buffer, *offset, sizeof(*buffer)) != sizeof(*buffer))
++
++		// printk(BIOS_DEBUG, "F1 @%#zx...\n", *offset);
++
++		//TODO https://elixir.bootlin.com/coreboot/4.19/source/src/commonlib/region.c#L78
++
++		if (cbfs_dev_read(dev, buffer, *offset, sizeof(*buffer)) != sizeof(*buffer)) {
++			// printk(BIOS_DEBUG, "F2\n");
+ 			return CB_CBFS_IO;
++		}
+ 
+-		if (memcmp(buffer->magic, CBFS_FILE_MAGIC, sizeof(buffer->magic)) == 0)
++		// printk(BIOS_DEBUG, "F3\n");
++
++		if (memcmp(buffer->magic, CBFS_FILE_MAGIC, sizeof(buffer->magic)) == 0) {
++			// printk(BIOS_DEBUG, "F4\n");
+ 			return CB_SUCCESS;
++		}
++
++		// printk(BIOS_DEBUG, "F5\n");
+ 
+ 		*offset += CBFS_ALIGNMENT;
+ 	}
+@@ -32,21 +49,29 @@ enum cb_err cbfs_walk(cbfs_dev_t dev, enum cb_err (*walker)(cbfs_dev_t dev, size
+ 	const size_t devsize = cbfs_dev_size(dev);
+ 	struct vb2_digest_context dc;
+ 
++	// printk(BIOS_DEBUG, "E1\n");
++
+ 	assert(CBFS_ENABLE_HASHING || (!metadata_hash && !(flags & CBFS_WALK_WRITEBACK_HASH)));
+ 	if (do_hash && vb2_digest_init(&dc, CBFS_HASH_HWCRYPTO, metadata_hash->algo, 0))
+ 		return CB_ERR_ARG;
+ 
++	// printk(BIOS_DEBUG, "E2\n");
++
+ 	size_t offset = 0;
+ 	enum cb_err ret_header;
+ 	enum cb_err ret_walker = CB_CBFS_NOT_FOUND;
+ 	union cbfs_mdata mdata;
+ 	while ((ret_header = read_next_header(dev, &offset, &mdata.h, devsize)) == CB_SUCCESS) {
++		// printk(BIOS_DEBUG, "E3\n");
++
+ 		const uint32_t attr_offset = be32toh(mdata.h.attributes_offset);
+ 		const uint32_t data_offset = be32toh(mdata.h.offset);
+ 		const uint32_t data_length = be32toh(mdata.h.len);
+ 		const uint32_t type = be32toh(mdata.h.type);
+ 		const bool empty = (type == CBFS_TYPE_DELETED || type == CBFS_TYPE_NULL);
+ 
++		// printk(BIOS_DEBUG, "E4\n");
++
+ 		DEBUG("Found CBFS header @%#zx (type %d, attr +%#x, data +%#x, length %#x)\n",
+ 		      offset, type, attr_offset, data_offset, data_length);
+ 		if (data_offset > sizeof(mdata) || data_length > devsize ||
+@@ -56,9 +81,13 @@ enum cb_err cbfs_walk(cbfs_dev_t dev, enum cb_err (*walker)(cbfs_dev_t dev, size
+ 			continue;
+ 		}
+ 
++		// printk(BIOS_DEBUG, "E5\n");
++
+ 		if (empty && !(flags & CBFS_WALK_INCLUDE_EMPTY))
+ 			goto next_file;
+ 
++		// printk(BIOS_DEBUG, "E6\n");
++
+ 		/* When hashing we need to read everything. Otherwise skip the attributes.
+ 		   attr_offset may be 0, which means there are no attributes. */
+ 		ssize_t todo;
+@@ -71,6 +100,8 @@ enum cb_err cbfs_walk(cbfs_dev_t dev, enum cb_err (*walker)(cbfs_dev_t dev, size
+ 			goto next_file;
+ 		}
+ 
++		// printk(BIOS_DEBUG, "E7\n");
++
+ 		/* Read the rest of the metadata (filename, and possibly attributes). */
+ 		assert(todo > 0 && todo <= sizeof(mdata) - sizeof(mdata.h));
+ 		if (cbfs_dev_read(dev, mdata.raw + sizeof(mdata.h),
+@@ -80,6 +111,8 @@ enum cb_err cbfs_walk(cbfs_dev_t dev, enum cb_err (*walker)(cbfs_dev_t dev, size
+ 		mdata.raw[attr_offset ? attr_offset - 1 : data_offset - 1] = '\0';
+ 		DEBUG("File name: '%s'\n", mdata.h.filename);
+ 
++		// printk(BIOS_DEBUG, "E8\n");
++
+ 		if (do_hash && !empty && vb2_digest_extend(&dc, mdata.raw, data_offset))
+ 			return CB_ERR;
+ 
+@@ -90,14 +123,22 @@ enum cb_err cbfs_walk(cbfs_dev_t dev, enum cb_err (*walker)(cbfs_dev_t dev, size
+ 		if (ret_walker == CB_CBFS_IO || (ret_walker != CB_CBFS_NOT_FOUND && !do_hash))
+ 			return ret_walker;
+ 
++		// printk(BIOS_DEBUG, "E9\n");
++
+ next_file:
+ 		offset += data_offset + data_length;
+ 	}
+ 
++	// printk(BIOS_DEBUG, "E10\n");
++
+ 	if (ret_header != CB_CBFS_NOT_FOUND)
+ 		return ret_header;
+ 
++	// printk(BIOS_DEBUG, "E11\n");
++
+ 	if (do_hash) {
++		//printk(BIOS_DEBUG, "E12\n");
++
+ 		uint8_t real_hash[VB2_MAX_DIGEST_SIZE];
+ 		size_t hash_size = vb2_digest_size(metadata_hash->algo);
+ 		if (vb2_digest_finalize(&dc, real_hash, hash_size))
+@@ -108,6 +149,8 @@ next_file:
+ 			return CB_CBFS_HASH_MISMATCH;
+ 	}
+ 
++	//printk(BIOS_DEBUG, "E13\n");
++
+ 	return ret_walker;
+ }
+ 
+diff --git a/src/console/init.c b/src/console/init.c
+index 8918dcff6d..a056ecfd76 100644
+--- a/src/console/init.c
++++ b/src/console/init.c
+@@ -11,6 +11,7 @@
+ 
+ #define FIRST_CONSOLE (ENV_BOOTBLOCK || (CONFIG(NO_BOOTBLOCK_CONSOLE) && ENV_ROMSTAGE))
+ 
++//these requires CaR
+ static int console_inited;
+ static int console_loglevel;
+ 
+@@ -56,6 +57,14 @@ void console_init(void)
+ 	if (CONFIG(EARLY_PCI_BRIDGE) && (ENV_BOOTBLOCK || ENV_ROMSTAGE))
+ 		pci_early_bridge_init();
+ 
++
++	asm volatile(
++		"movb $'j', %%al\n\t"     // Move the character to AL register
++		"movw $0x3F8, %%dx\n\t" // Load 0x3F8 (COM1 port) into DX register
++		"outb %%al, %%dx"       // Send the character to COM1 port
++		:::
++	);
++
+ 	console_hw_init();
+ 
+ 	console_inited = 1;
+@@ -63,6 +72,32 @@ void console_init(void)
+ 	if (ENV_BOOTBLOCK && CONFIG(CONSOLE_CBMEM_PRINT_PRE_BOOTBLOCK_CONTENTS))
+ 		cbmem_dump_console();
+ 
+-	printk(BIOS_NOTICE, "\n\ncoreboot-%s%s %s " ENV_ARCH " " ENV_STRING " starting (log level: %i)...\n",
++#if 0
++
++	uint8_t * mem = (uint8_t *) CONFIG_DCACHE_RAM_BASE;
++
++	// asm volatile("rdtsc" :::);
++
++	printk(BIOS_NOTICE, "\n\nDUMP:\n");
++	// asm volatile("rdtsc" :::);
++
++	for (unsigned idx=0; idx < CONFIG_DCACHE_RAM_SIZE; idx++) {
++		if ((idx % 16) == 0) {
++			printk(BIOS_NOTICE, "%08x: ", CONFIG_DCACHE_RAM_BASE + idx);
++		}
++
++		printk(BIOS_NOTICE, "%02x ", mem[idx]);
++
++		if ((idx % 16) == 15) {
++			printk(BIOS_NOTICE, "\n");
++		}
++	}
++#endif
++
++// printk(BIOS_NOTICE, "\n\nconsole_inited: %p\n", &console_inited);
++
++//NOTICE prvni vyskyt vypisu integeru, s modernim kompilatorem vygeneruje endbr32 v deleni radu -> reset
++
++	printk(BIOS_NOTICE, "\n\ncoreboot-%s%s %s " ENV_STRING " starting (log level: %i)...\n",
+ 	       coreboot_version, coreboot_extra_version, coreboot_build, get_log_level());
+ }
+diff --git a/src/console/post.c b/src/console/post.c
+index f3a146318f..7c893494dc 100644
+--- a/src/console/post.c
++++ b/src/console/post.c
+@@ -14,16 +14,55 @@ void __weak mainboard_post(uint8_t value) { }
+ 
+ void post_code(uint8_t value)
+ {
++	// uint8_t xxx;
++
+ 	if (!CONFIG(NO_POST)) {
+ 		/* Assume this to be the most reliable and simplest type
+ 		   for displaying POST so keep it first. */
+ 		arch_post_code(value);
+ 
++		// xxx = value;
++
++		// asm volatile(".string \"333333333333\" " :::);
++
++/*
++		asm volatile(
++			"movb %0, %%al\n\t"
++			"movw $0x3F8, %%dx\n\t"
++			"outb %%al, %%dx"
++			:
++			: "q" (xxx)
++			: "%al", "%dx"
++		);
++		*/
++
+ 		soc_post_code(value);
++/*
++		xxx = 'F';
++		asm volatile(
++			"movb %0, %%al\n\t"
++			"movw $0x3F8, %%dx\n\t"
++			"outb %%al, %%dx"
++			:
++			: "q" (xxx)
++			: "%al", "%dx"
++		);*/
++
+ 
+ 		if (CONFIG(CONSOLE_POST))
+ 			printk(BIOS_INFO, "POST: 0x%02x\n", value);
+ 
+ 		mainboard_post(value);
++/*
++		xxx = 'G';
++		asm volatile(
++			"movb %0, %%al\n\t"
++			"movw $0x3F8, %%dx\n\t"
++			"outb %%al, %%dx"
++			:
++			: "q" (xxx)
++			: "%al", "%dx"
++		);*/
++
+ 	}
+ }
+diff --git a/src/console/vtxprintf.c b/src/console/vtxprintf.c
+index cfba6db420..4aaa921ba9 100644
+--- a/src/console/vtxprintf.c
++++ b/src/console/vtxprintf.c
+@@ -10,6 +10,9 @@
+ #include <string.h>
+ #include <types.h>
+ 
++#include <console/streams.h>	//temp
++
++
+ #define call_tx(x) tx_byte(x, data)
+ 
+ #define ZEROPAD	1		/* pad with zero */
+@@ -30,6 +33,8 @@ static int number(void (*tx_byte)(unsigned char byte, void *data), unsigned long
+ 	unsigned long long num = inum;
+ 	long long snum = num;
+ 
++	// console_tx_byte('<');
++
+ 	if (type & LARGE)
+ 		digits = "0123456789ABCDEF";
+ 	if (type & LEFT)
+@@ -49,6 +54,7 @@ static int number(void (*tx_byte)(unsigned char byte, void *data), unsigned long
+ 			size--;
+ 		}
+ 	}
++
+ 	if (type & SPECIAL) {
+ 		if (base == 16)
+ 			size -= 2;
+@@ -56,14 +62,48 @@ static int number(void (*tx_byte)(unsigned char byte, void *data), unsigned long
+ 			size--;
+ 	}
+ 	i = 0;
++
++	// console_tx_byte('!');
++
+ 	if (num == 0) {
++// console_tx_byte('a');
+ 		tmp[i++] = '0';
+ 	} else {
++// console_tx_byte('A');
+ 		while (num != 0) {
++
++//NOTICE chcipa to zde maximalne, original je univerzalni base, ale chcipa taky
++//moderni GCC pro div emituje predgenerovanej kod kde je endbr32 instrukce
++#if 0
++			switch(base) {
++				case 8:
++					tmp[i++] = digits[num % 8];
++					num /= 8;
++					break;
++				case 10:
++					tmp[i++] = digits[num % 10];
++					num /= 10;
++					break;
++				case 16:
++					tmp[i++] = digits[num % 16];
++					num /= 16;
++					break;
++				default:
++					break;
++
++			}
++#else
++
+ 			tmp[i++] = digits[num % base];
++
+ 			num /= base;
++
++#endif
+ 		}
+ 	}
++
++	// console_tx_byte('&');
++
+ 	if (i > precision) {
+ 		precision = i;
+ 	}
+@@ -96,6 +136,7 @@ static int number(void (*tx_byte)(unsigned char byte, void *data), unsigned long
+ 		call_tx(tmp[i]), count++;
+ 	while (size-- > 0)
+ 		call_tx(' '), count++;
++
+ 	return count;
+ }
+ 
+diff --git a/src/device/device.c b/src/device/device.c
+index 39e8027d17..c0ef3a2e88 100644
+--- a/src/device/device.c
++++ b/src/device/device.c
+@@ -159,7 +159,7 @@ static void read_resources(struct bus *bus)
+ {
+ 	struct device *curdev;
+ 
+-	printk(BIOS_SPEW, "%s %s bus %d link: %d\n", dev_path(bus->dev),
++	printk(BIOS_INFO, "%s %s bus %d link: %d\n", dev_path(bus->dev),
+ 	       __func__, bus->secondary, bus->link_num);
+ 
+ 	/* Walk through all devices and find which resources they need. */
+@@ -183,7 +183,7 @@ static void read_resources(struct bus *bus)
+ 			read_resources(link);
+ 	}
+ 	post_log_clear();
+-	printk(BIOS_SPEW, "%s %s bus %d link: %d done\n",
++	printk(BIOS_INFO, "%s %s bus %d link: %d done\n",
+ 	       dev_path(bus->dev), __func__, bus->secondary, bus->link_num);
+ }
+ 
+@@ -289,7 +289,7 @@ void assign_resources(struct bus *bus)
+ {
+ 	struct device *curdev;
+ 
+-	printk(BIOS_SPEW, "%s %s, bus %d link: %d\n",
++	printk(BIOS_INFO, "%s %s, bus %d link: %d\n",
+ 	       dev_path(bus->dev), __func__, bus->secondary, bus->link_num);
+ 
+ 	for (curdev = bus->children; curdev; curdev = curdev->sibling) {
+@@ -305,8 +305,9 @@ void assign_resources(struct bus *bus)
+ 		curdev->ops->set_resources(curdev);
+ 	}
+ 	post_log_clear();
+-	printk(BIOS_SPEW, "%s %s, bus %d link: %d done\n",
++	printk(BIOS_INFO, "%s %s, bus %d link: %d done\n",
+ 	       dev_path(bus->dev), __func__, bus->secondary, bus->link_num);
++
+ }
+ 
+ /**
+@@ -488,19 +489,29 @@ void dev_configure(void)
+ 
+ 	/* Read the resources for the entire tree. */
+ 
+-	printk(BIOS_INFO, "Reading resources...\n");
++	printk(BIOS_SPEW, "Reading resources...\n");
+ 	read_resources(root->link_list);
+-	printk(BIOS_INFO, "Done reading resources.\n");
++	printk(BIOS_SPEW, "Done reading resources.\n");
+ 
+-	print_resource_tree(root, BIOS_SPEW, "After reading.");
++	print_resource_tree(root, BIOS_INFO, "After reading.");
+ 
+ 	allocate_resources(root);
+ 
+ 	assign_resources(root->link_list);
+ 	printk(BIOS_INFO, "Done setting resources.\n");
+-	print_resource_tree(root, BIOS_SPEW, "After assigning values.");
++	print_resource_tree(root, BIOS_INFO, "After assigning values.");	//pc2005
+ 
+ 	printk(BIOS_INFO, "Done allocating resources.\n");
++
++#if 0
++	printk(BIOS_INFO, "0:%08x\n", pci_s_read_config32(PCI_DEV(0,5,0), PCI_BASE_ADDRESS_0));
++	printk(BIOS_INFO, "1:%08x\n", pci_s_read_config32(PCI_DEV(0,5,0), PCI_BASE_ADDRESS_1));
++	printk(BIOS_INFO, "2:%08x\n", pci_s_read_config32(PCI_DEV(0,5,0), PCI_BASE_ADDRESS_2));
++	printk(BIOS_INFO, "3:%08x\n", pci_s_read_config32(PCI_DEV(0,5,0), PCI_BASE_ADDRESS_3));
++	printk(BIOS_INFO, "4:%08x\n", pci_s_read_config32(PCI_DEV(0,5,0), PCI_BASE_ADDRESS_4));
++	printk(BIOS_INFO, "5:%08x\n", pci_s_read_config32(PCI_DEV(0,5,0), PCI_BASE_ADDRESS_5));
++	printk(BIOS_INFO, "r:%08x\n", pci_s_read_config32(PCI_DEV(0,5,0), PCI_ROM_ADDRESS));
++#endif
+ }
+ 
+ /**
+diff --git a/src/device/pci_device.c b/src/device/pci_device.c
+index e600f34fe6..88736f8d5b 100644
+--- a/src/device/pci_device.c
++++ b/src/device/pci_device.c
+@@ -1826,6 +1826,9 @@ void pci_assign_irqs(struct device *dev, const unsigned char pIntAtoD[4])
+ {
+ 	u8 slot, line, irq;
+ 
++printk(BIOS_DEBUG, "AAAAAAIIIIRRRRQQQ\n");
++
++
+ 	/* Each device may contain up to eight functions. */
+ 	slot = dev->path.pci.devfn >> 3;
+ 
+diff --git a/src/device/resource_allocator_v4.c b/src/device/resource_allocator_v4.c
+index 6e4aa5ee7d..6afca8ec96 100644
+--- a/src/device/resource_allocator_v4.c
++++ b/src/device/resource_allocator_v4.c
+@@ -24,7 +24,7 @@ static bool dev_has_children(const struct device *dev)
+ 	return bus && bus->children;
+ }
+ 
+-#define res_printk(depth, str, ...)	printk(BIOS_DEBUG, "%*c"str, depth, ' ', __VA_ARGS__)
++#define res_printk(depth, str, ...)	printk(BIOS_INFO, "%*c"str, depth, ' ', __VA_ARGS__)
+ 
+ /*
+  * During pass 1, once all the requirements for downstream devices of a
+@@ -388,7 +388,7 @@ static void allocate_child_resources(struct bus *bus, struct memranges *ranges,
+ 		if (memranges_steal(ranges, resource->limit, resource->size, resource->align,
+ 				    type_match, &resource->base, allocate_top_down) == false) {
+ 			printk(BIOS_ERR, "  ERROR: Resource didn't fit!!! ");
+-			printk(BIOS_DEBUG, "  %s %02lx *  size: 0x%llx limit: %llx %s\n",
++			printk(BIOS_INFO, "  %s %02lx *  size: 0x%llx limit: %llx %s\n",
+ 			       dev_path(dev), resource->index,
+ 			       resource->size, resource->limit, resource2str(resource));
+ 			continue;
+@@ -397,7 +397,7 @@ static void allocate_child_resources(struct bus *bus, struct memranges *ranges,
+ 		resource->limit = resource->base + resource->size - 1;
+ 		resource->flags |= IORESOURCE_ASSIGNED;
+ 
+-		printk(BIOS_DEBUG, "  %s %02lx *  [0x%llx - 0x%llx] limit: %llx %s\n",
++		printk(BIOS_INFO, "  %s %02lx *  [0x%llx - 0x%llx] limit: %llx %s\n",
+ 		       dev_path(dev), resource->index, resource->base,
+ 		       resource->size ? resource->base + resource->size - 1 :
+ 		       resource->base, resource->limit, resource2str(resource));
+@@ -410,7 +410,7 @@ static void update_constraints(struct memranges *ranges, const struct device *de
+ 	if (!res->size)
+ 		return;
+ 
+-	printk(BIOS_DEBUG, " %s: %s %02lx base %08llx limit %08llx %s (fixed)\n",
++	printk(BIOS_INFO, " %s: %s %02lx base %08llx limit %08llx %s (fixed)\n",
+ 	       __func__, dev_path(dev), res->index, res->base,
+ 	       res->base + res->size - 1, resource2str(res));
+ 
+@@ -488,7 +488,7 @@ static void constrain_domain_resources(const struct device *domain, struct memra
+ static void setup_resource_ranges(const struct device *dev, const struct resource *res,
+ 				  unsigned long type, struct memranges *ranges)
+ {
+-	printk(BIOS_DEBUG, "%s %s: base: %llx size: %llx align: %d gran: %d limit: %llx\n",
++	printk(BIOS_INFO, "%s %s: base: %llx size: %llx align: %d gran: %d limit: %llx\n",
+ 	       dev_path(dev), resource2str(res), res->base, res->size, res->align,
+ 	       res->gran, res->limit);
+ 
+@@ -506,7 +506,7 @@ static void cleanup_resource_ranges(const struct device *dev, struct memranges *
+ 				    const struct resource *res)
+ {
+ 	memranges_teardown(ranges);
+-	printk(BIOS_DEBUG, "%s %s: base: %llx size: %llx align: %d gran: %d limit: %llx done\n",
++	printk(BIOS_INFO, "%s %s: base: %llx size: %llx align: %d gran: %d limit: %llx done\n",
+ 	       dev_path(dev), resource2str(res), res->base, res->size, res->align,
+ 	       res->gran, res->limit);
+ }
+diff --git a/src/lib/bootblock.c b/src/lib/bootblock.c
+index 5c202baa43..bcd7cac465 100644
+--- a/src/lib/bootblock.c
++++ b/src/lib/bootblock.c
+@@ -13,6 +13,7 @@
+ #include <symbols.h>
+ #include <timestamp.h>
+ 
++
+ __weak void bootblock_mainboard_early_init(void) { /* no-op */ }
+ __weak void bootblock_soc_early_init(void) { /* do nothing */ }
+ __weak void bootblock_soc_init(void) { /* do nothing */ }
+@@ -41,8 +42,20 @@ void bootblock_main_with_timestamp(uint64_t base_timestamp,
+ 
+ 	timestamp_add_now(TS_BOOTBLOCK_START);
+ 
++	// post_code('b');
++
++	// asm volatile("rdtsc" :::);
+ 	bootblock_soc_early_init();
++
++	// printk(BIOS_DEBUG, "E1\n");
++
++// post_code('m');
++
++	// asm volatile("rdtsc" :::);
+ 	bootblock_mainboard_early_init();
++	// asm volatile("rdtsc" :::);
++
++	// printk(BIOS_DEBUG, "E2\n");
+ 
+ 	if (CONFIG(USE_OPTION_TABLE))
+ 		sanitize_cmos();
+@@ -50,21 +63,108 @@ void bootblock_main_with_timestamp(uint64_t base_timestamp,
+ 	if (CONFIG(CMOS_POST))
+ 		cmos_post_init();
+ 
++// post_code('c');
++
++
+ 	if (CONFIG(BOOTBLOCK_CONSOLE)) {
+ 		console_init();
++
++		// printk(BIOS_NOTICE, "A1\n");
++
+ 		exception_init();
+ 	}
+ 
++	// printk(BIOS_NOTICE, "A2\n");
++
+ 	bootblock_soc_init();
++	// printk(BIOS_NOTICE, "A3\n");
+ 	bootblock_mainboard_init();
++	// printk(BIOS_NOTICE, "A4\n");
+ 
+ 	if (CONFIG(TPM_MEASURED_BOOT_INIT_BOOTBLOCK)) {
+ 		int s3resume = acpi_is_wakeup_s3();
+ 		tpm_setup(s3resume);
+ 	}
+ 
++	// printk(BIOS_NOTICE, "A5\n");
++
+ 	timestamp_add_now(TS_BOOTBLOCK_END);
+ 
++	// printk(BIOS_NOTICE, "A6\n");
++
++/*
++	printk(BIOS_NOTICE, "%p\n", &deleteme);
++	deleteme = 0x42236933;
++	printk(BIOS_NOTICE, "%p\n", &deleteme);
++
++uint8_t *const mem1 = (uint8_t *)0x01001f00;
++printk(BIOS_DEBUG, "\n%p:\n", mem1);
++for (unsigned idx=0;idx<0x100;idx++) {
++	if ((idx % 16) == 0) {
++		printk(BIOS_DEBUG, "%p: ", &mem1[idx]);
++	}
++	printk(BIOS_DEBUG, "%02hhx ", mem1[idx]);
++	if ((idx % 16) == 15) {
++		printk(BIOS_DEBUG, "\n");
++	}
++}*/
++
++
++	// post_code('x');
++
++#if 0
++	asm volatile(
++		"nop\n\t"
++		"nop\n\t"
++		"nop\n\t"
++		"rdtsc\n\t"
++		:::
++	);
++#endif
++
++	// volatile int xxx = deleteme;
++
++#if 0
++	asm volatile(
++		"nop\n\t"
++		"nop\n\t"
++		"nop\n\t"
++		"rdtsc\n\t"
++		:::
++	);
++#endif
++
++
++
++#if 0
++uint8_t *const mem1 = (uint8_t *)0xfffe0000;
++printk(BIOS_DEBUG, "\n%p:\n", mem1);
++for (unsigned idx=0;idx<0x100;idx++) {
++	printk(BIOS_DEBUG, "%02x ", mem1[idx]);
++}
++
++uint8_t *const mem2 = (uint8_t *)0xffff0000;
++printk(BIOS_DEBUG, "\n%p:\n", mem2);
++for (unsigned idx=0;idx<0x100;idx++) {
++	printk(BIOS_DEBUG, "%02x ", mem2[idx]);
++}
++
++uint8_t *const mem3 = (uint8_t *)0xe0000;
++printk(BIOS_DEBUG, "\n%p:\n", mem3);
++for (unsigned idx=0;idx<0x100;idx++) {
++	printk(BIOS_DEBUG, "%02x ", mem3[idx]);
++}
++
++uint8_t *const mem4 = (uint8_t *)0xf0000;
++printk(BIOS_DEBUG, "\n%p:\n", mem4);
++for (unsigned idx=0;idx<0x100;idx++) {
++	printk(BIOS_DEBUG, "%02x ", mem4[idx]);
++}
++#endif
++
++
++	printk(BIOS_NOTICE, "before ROM STAGE\n");
++
+ 	run_romstage();
+ }
+ 
+@@ -77,11 +177,17 @@ void main(void)
+ {
+ 	uint64_t base_timestamp = 0;
+ 
++	post_code('D');
++
+ 	init_timer();
+ 
++	// post_code('E');
++
+ 	if (CONFIG(COLLECT_TIMESTAMPS))
+ 		base_timestamp = timestamp_get();
+ 
++	// post_code('F');
++
+ 	bootblock_main_with_timestamp(base_timestamp, NULL, 0);
+ }
+ 
+diff --git a/src/lib/cbfs.c b/src/lib/cbfs.c
+index a2eb5a4ce3..7c451a1530 100644
+--- a/src/lib/cbfs.c
++++ b/src/lib/cbfs.c
+@@ -38,15 +38,42 @@ CBMEM_CREATION_HOOK(switch_to_postram_cache);
+ enum cb_err _cbfs_boot_lookup(const char *name, bool force_ro,
+ 			      union cbfs_mdata *mdata, struct region_device *rdev)
+ {
++	// printk(BIOS_DEBUG, "D1 boot lookup\n");
++
++	#if 0
++	printk(BIOS_DEBUG, "D1 boot lookup 0x500 table:\n");
++	for (unsigned idx=0;idx<40;idx++) {
++		u8 * dptr = (u8 *)0x500;
++		printk(BIOS_DEBUG, "%02x ", dptr[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++	#endif
++
+ 	const struct cbfs_boot_device *cbd = cbfs_get_boot_device(force_ro);
+-	if (!cbd)
++	if (!cbd) {
++	// printk(BIOS_DEBUG, "D1 cb error\n");
+ 		return CB_ERR;
++	}
++
++	// printk(BIOS_DEBUG, "D2\n");
++
++	#if 0
++	printk(BIOS_DEBUG, "0x500 table: ");
++	for (unsigned idx=0;idx<40;idx++) {
++		u8 * dptr = (u8 *)0x500;
++		printk(BIOS_DEBUG, "%02x ", dptr[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++	#endif
+ 
+ 	size_t data_offset;
+ 	enum cb_err err = CB_CBFS_CACHE_FULL;
+ 	if (!CONFIG(NO_CBFS_MCACHE) && !ENV_SMM && cbd->mcache_size)
+ 		err = cbfs_mcache_lookup(cbd->mcache, cbd->mcache_size,
+ 					 name, mdata, &data_offset);
++
++// printk(BIOS_DEBUG, "D3\n");
++
+ 	if (err == CB_CBFS_CACHE_FULL) {
+ 		struct vb2_hash *metadata_hash = NULL;
+ 		if (CONFIG(TOCTOU_SAFETY)) {
+@@ -66,11 +93,19 @@ enum cb_err _cbfs_boot_lookup(const char *name, bool force_ro,
+ 		err = cbfs_lookup(&cbd->rdev, name, mdata, &data_offset, metadata_hash);
+ 	}
+ 
++	// printk(BIOS_DEBUG, "D4\n");
++
+ 	if (CONFIG(VBOOT_ENABLE_CBFS_FALLBACK) && !force_ro && err == CB_CBFS_NOT_FOUND) {
+ 		printk(BIOS_INFO, "CBFS: Fall back to RO region for %s\n", name);
+ 		return _cbfs_boot_lookup(name, true, mdata, rdev);
+ 	}
++
++	// printk(BIOS_DEBUG, "D5\n");
++
+ 	if (err) {
++
++		//printk(BIOS_DEBUG, "D6\n");
++
+ 		if (err == CB_CBFS_NOT_FOUND)
+ 			printk(BIOS_WARNING, "CBFS: '%s' not found.\n", name);
+ 		else if (err == CB_CBFS_HASH_MISMATCH)
+@@ -81,9 +116,35 @@ enum cb_err _cbfs_boot_lookup(const char *name, bool force_ro,
+ 		return err;
+ 	}
+ 
++	// printk(BIOS_DEBUG, "D7\n");
++
++	#if ENV_RAMSTAGE
++	#if 0	//pc2005
++	printk(BIOS_DEBUG, "0x500 table: ");
++	for (unsigned idx=0;idx<40;idx++) {
++		u8 * dptr = (u8 *)0x500;
++		printk(BIOS_DEBUG, "%02x ", dptr[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++	#endif
++	#endif
++
+ 	if (rdev_chain(rdev, &cbd->rdev, data_offset, be32toh(mdata->h.len)))
+ 		return CB_ERR;
+ 
++	//printk(BIOS_DEBUG, "D8\n");
++
++	#if ENV_RAMSTAGE
++	#if 0	//pc2005
++	printk(BIOS_DEBUG, "0x500 table: ");
++	for (unsigned idx=0;idx<40;idx++) {
++		u8 * dptr = (u8 *)0x500;
++		printk(BIOS_DEBUG, "%02x ", dptr[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++	#endif
++	#endif
++
+ 	return CB_SUCCESS;
+ }
+ 
+@@ -432,6 +493,7 @@ static void *do_alloc(union cbfs_mdata *mdata, struct region_device *rdev,
+ 	/* allocator == NULL means do a cbfs_map() */
+ 	if (allocator) {
+ 		loc = allocator(arg, size, mdata);
++// DEBUG("XXXX allocator %p\n", loc);
+ 	} else if (compression == CBFS_COMPRESS_NONE) {
+ 		void *mapping = rdev_mmap_full(rdev);
+ 		if (!mapping)
+@@ -448,7 +510,16 @@ static void *do_alloc(union cbfs_mdata *mdata, struct region_device *rdev,
+ 		ERROR("Cannot map compressed file %s without cbfs_cache\n", mdata->h.filename);
+ 		return NULL;
+ 	} else {
++DEBUG("WWWW mpa PRE al:%u mpsz:%u mpfof:%u sz:%u\n",
++      cbfs_cache.alignment,
++      cbfs_cache.size,
++      cbfs_cache.free_offset,
++      size
++
++);
+ 		loc = mem_pool_alloc(&cbfs_cache, size);
++
++DEBUG("XXXX mem_pool_alloc %p\n", loc);
+ 	}
+ 
+ 	if (!loc) {
+@@ -543,20 +614,33 @@ enum cb_err cbfs_prog_stage_load(struct prog *pstage)
+ 	struct region_device rdev;
+ 	enum cb_err err;
+ 
++	// printk(BIOS_NOTICE, "C1\n");
++
+ 	prog_locate_hook(pstage);
+ 
+-	if ((err = _cbfs_boot_lookup(prog_name(pstage), false, &mdata, &rdev)))
++	// printk(BIOS_NOTICE, "C2\n");
++
++	if ((err = _cbfs_boot_lookup(prog_name(pstage), false, &mdata, &rdev))) {
++		//printk(BIOS_NOTICE, "C3\n");
++
+ 		return err;
++	}
++
++	// printk(BIOS_NOTICE, "C4\n");
+ 
+ 	assert(be32toh(mdata.h.type) == CBFS_TYPE_STAGE);
+ 	pstage->cbfs_type = CBFS_TYPE_STAGE;
+ 
++	// printk(BIOS_NOTICE, "C5\n");
++
+ 	enum cbfs_compression compression = CBFS_COMPRESS_NONE;
+ 	const struct cbfs_file_attr_compression *cattr = cbfs_find_attr(&mdata,
+ 				CBFS_FILE_ATTR_TAG_COMPRESSION, sizeof(*cattr));
+ 	if (cattr)
+ 		compression = be32toh(cattr->compression);
+ 
++	// printk(BIOS_NOTICE, "C6\n");
++
+ 	const struct cbfs_file_attr_stageheader *sattr = cbfs_find_attr(&mdata,
+ 				CBFS_FILE_ATTR_TAG_STAGEHEADER, sizeof(*sattr));
+ 	if (!sattr)
+@@ -566,10 +650,15 @@ enum cb_err cbfs_prog_stage_load(struct prog *pstage)
+ 	prog_set_entry(pstage, prog_start(pstage) +
+ 			       be32toh(sattr->entry_offset), NULL);
+ 
++	//printk(BIOS_NOTICE, "C7\n");
++
+ 	/* Hacky way to not load programs over read only media. The stages
+ 	 * that would hit this path initialize themselves. */
+ 	if ((ENV_BOOTBLOCK || ENV_SEPARATE_VERSTAGE) &&
+ 	    !CONFIG(NO_XIP_EARLY_STAGES) && CONFIG(BOOT_DEVICE_MEMORY_MAPPED)) {
++
++		//printk(BIOS_NOTICE, "C8\n");
++
+ 		void *mapping = rdev_mmap_full(&rdev);
+ 		rdev_munmap(&rdev, mapping);
+ 		if (cbfs_file_hash_mismatch(mapping, region_device_sz(&rdev), &mdata, false))
+@@ -578,6 +667,8 @@ enum cb_err cbfs_prog_stage_load(struct prog *pstage)
+ 			return CB_SUCCESS;
+ 	}
+ 
++	//printk(BIOS_NOTICE, "C9\n");
++
+ 	/* LZ4 stages can be decompressed in-place to save mapping scratch space. Load the
+ 	   compressed data to the end of the buffer and point &rdev to that memory location. */
+ 	if (cbfs_lz4_enabled() && compression == CBFS_COMPRESS_LZ4) {
+@@ -588,24 +679,36 @@ enum cb_err cbfs_prog_stage_load(struct prog *pstage)
+ 		rdev_chain_mem(&rdev, compr_start, in_size);
+ 	}
+ 
++	//printk(BIOS_NOTICE, "C10\n");
++
+ 	size_t fsize = cbfs_load_and_decompress(&rdev, prog_start(pstage), prog_size(pstage),
+ 						compression, &mdata, false);
+ 	if (!fsize)
+ 		return CB_ERR;
+ 
++	//printk(BIOS_NOTICE, "C11\n");
++
+ 	/* Clear area not covered by file. */
+ 	memset(prog_start(pstage) + fsize, 0, prog_size(pstage) - fsize);
+ 
++	// printk(BIOS_NOTICE, "C12\n");
++
+ 	prog_segment_loaded((uintptr_t)prog_start(pstage), prog_size(pstage),
+ 			    SEG_FINAL);
+ 
++	// printk(BIOS_NOTICE, "C13\n");
++
++
+ 	return CB_SUCCESS;
+ }
+ 
+ void cbfs_boot_device_find_mcache(struct cbfs_boot_device *cbd, uint32_t id)
+ {
+-	if (CONFIG(NO_CBFS_MCACHE) || ENV_SMM)
++	if (CONFIG(NO_CBFS_MCACHE) || ENV_SMM) {
++		// printk(BIOS_DEBUG, "Lx\n");
++
+ 		return;
++	}
+ 
+ 	if (cbd->mcache_size)
+ 		return;
+@@ -648,21 +751,32 @@ enum cb_err cbfs_init_boot_device(const struct cbfs_boot_device *cbd,
+ 	return err;
+ }
+ 
++
+ const struct cbfs_boot_device *cbfs_get_boot_device(bool force_ro)
+ {
++	// printk(BIOS_DEBUG, "get boot device\n");
++
+ 	static struct cbfs_boot_device ro;
+ 
++	// printk(BIOS_DEBUG, "L0 %u\n", region_device_sz(&ro.rdev));
++
+ 	/* Ensure we always init RO mcache, even if the first file is from the RW CBFS.
+ 	   Otherwise it may not be available when needed in later stages. */
+-	if (ENV_INITIAL_STAGE && !force_ro && !region_device_sz(&ro.rdev))
++	if (ENV_INITIAL_STAGE && !force_ro && !region_device_sz(&ro.rdev)) {
++		// printk(BIOS_DEBUG, "bootblock force RO\n");
++
+ 		cbfs_get_boot_device(true);
++	}
+ 
+ 	if (!force_ro) {
+ 		const struct cbfs_boot_device *rw = vboot_get_cbfs_boot_device();
+ 		/* This will return NULL if vboot isn't enabled, didn't run yet or decided to
+ 		   boot into recovery mode. */
+-		if (rw)
++		if (rw) {
++			// printk(BIOS_DEBUG, "L1 RW\n");
++
+ 			return rw;
++		}
+ 	}
+ 
+ 	/* In rare cases post-RAM stages may run this before cbmem_initialize(), so we can't
+@@ -695,6 +809,8 @@ const struct cbfs_boot_device *cbfs_get_boot_device(bool force_ro)
+ 			die("RO CBFS initialization error: %d", err);
+ 	}
+ 
++	// printk(BIOS_DEBUG, "L3 RO\n");
++
+ 	return &ro;
+ }
+ 
+diff --git a/src/lib/coreboot_table.c b/src/lib/coreboot_table.c
+index 6a73219479..544c01bd27 100644
+--- a/src/lib/coreboot_table.c
++++ b/src/lib/coreboot_table.c
+@@ -454,8 +454,8 @@ size_t write_coreboot_forwarding_table(uintptr_t entry, uintptr_t target)
+ {
+ 	struct lb_header *head;
+ 
+-	printk(BIOS_DEBUG, "Writing table forward entry at %p\n",
+-		(void *)entry);
++	printk(BIOS_DEBUG, "Writing table forward entry at %p to target %p\n",
++		(void *)entry, (void *)target);
+ 
+ 	head = lb_table_init(entry);
+ 	lb_forward(head, (struct lb_header *)target);
+@@ -593,5 +593,17 @@ void *write_tables(void)
+ 
+ 	/* Print CBMEM sections */
+ 	cbmem_list();
++
++#if 0
++	printk(BIOS_DEBUG, "0x500 table: ");
++	for (unsigned idx=0;idx<40;idx++) {
++		u8 * dptr = (u8 *)0x500;
++		printk(BIOS_DEBUG, "%02x ", dptr[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++#endif
++
++
++
+ 	return (void *)cbtable_start;
+ }
+diff --git a/src/lib/hardwaremain.c b/src/lib/hardwaremain.c
+index 714452df20..0026c04b3c 100644
+--- a/src/lib/hardwaremain.c
++++ b/src/lib/hardwaremain.c
+@@ -423,6 +423,7 @@ static void boot_state_schedule_static_entries(void)
+ 	}
+ }
+ 
++//RAMSTAGE
+ void main(void)
+ {
+ 	/*
+@@ -445,6 +446,27 @@ void main(void)
+ 	/* console_init() MUST PRECEDE ALL printk()! Additionally, ensure
+ 	 * it is the very first thing done in ramstage.*/
+ 	console_init();
++
++#if 0
++	void* current_address;
++
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	asm volatile(
++
++		"call get_eip\n\t"
++		"get_eip:\n\t"
++		"pop %%eax\n\t"
++		"movl %%eax, %0\n\t"
++		: "=r" (current_address)::"%eax"
++	);
++
++	printk(BIOS_INFO, "** current address: %p\n", current_address);
++#endif
++
+ 	post_code(POST_CONSOLE_READY);
+ 
+ 	exception_init();
+@@ -453,6 +475,9 @@ void main(void)
+ 	 * CBMEM needs to be recovered because timestamps, ACPI, etc rely on
+ 	 * the cbmem infrastructure being around. Explicitly recover it.
+ 	 */
++
++	// printk(BIOS_INFO, "TODO cbmem_initialize\n");
++
+ 	cbmem_initialize();
+ 
+ 	timestamp_add_now(TS_RAMSTAGE_START);
+diff --git a/src/lib/imd_cbmem.c b/src/lib/imd_cbmem.c
+index 91c86211f5..7b5400bf11 100644
+--- a/src/lib/imd_cbmem.c
++++ b/src/lib/imd_cbmem.c
+@@ -93,30 +93,53 @@ int cbmem_initialize_id_size(u32 id, u64 size)
+ {
+ 	const int recovery = 1;
+ 
++// printk(BIOS_DEBUG, "CC1\n");
++
+ 	cbmem_top_init_once();
+ 
++// printk(BIOS_DEBUG, "CC2\n");
++
+ 	imd_handle_init(&imd, cbmem_top());
+ 
++// printk(BIOS_DEBUG, "CC3\n");
++
+ 	if (imd_recover(&imd))
+ 		return 1;
+ 
++// printk(BIOS_DEBUG, "CC4\n");
++
+ 	/*
+ 	 * Lock the imd in romstage on a recovery. The assumption is that
+ 	 * if the imd area was recovered in romstage then S3 resume path
+ 	 * is being taken.
+ 	 */
+-	if (ENV_CREATES_CBMEM)
++	if (ENV_CREATES_CBMEM) {
+ 		imd_lockdown(&imd);
++		// int ret= imd_lockdown(&imd);
++// printk(BIOS_DEBUG, "CC4b ret=%i\n", ret);
++
++	}
++
++// printk(BIOS_DEBUG, "CC5\n");
+ 
+ 	/* Add the specified range first */
+-	if (size)
++	if (size) {
+ 		cbmem_add(id, size);
++		// void * tmp = cbmem_add(id, size);
++// printk(BIOS_DEBUG, "CC5b %p\n", tmp);
++	}
++
++// printk(BIOS_DEBUG, "CC6\n");
+ 
+ 	/* Complete migration to CBMEM. */
+ 	cbmem_run_init_hooks(recovery);
+ 
++// printk(BIOS_DEBUG, "CC7\n");
++
+ 	cbmem_initialized = 1;
+ 
++// printk(BIOS_DEBUG, "CC8\n");
++
+ 	/* Recovery successful. */
+ 	return 0;
+ }
+diff --git a/src/lib/prog_loaders.c b/src/lib/prog_loaders.c
+index 08ba66a0c5..6258f5f0ab 100644
+--- a/src/lib/prog_loaders.c
++++ b/src/lib/prog_loaders.c
+@@ -38,6 +38,8 @@ void run_romstage(void)
+ 	prog_run(&romstage);
+ 
+ fail:
++	//printk(BIOS_NOTICE, "B10 fail\n");
++
+ 	if (CONFIG(BOOTBLOCK_CONSOLE))
+ 		die_with_post_code(POST_INVALID_ROM,
+ 				   "Couldn't load romstage.\n");
+@@ -181,9 +183,27 @@ void payload_run(void)
+ {
+ 	struct prog *payload = &global_payload;
+ 
++	#if 0	//pc2005
++	printk(BIOS_DEBUG, "0x500 table: ");
++	for (unsigned idx=0;idx<40;idx++) {
++		u8 * dptr = (u8 *)0x500;
++		printk(BIOS_DEBUG, "%02x ", dptr[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++	#endif
++
+ 	/* Reset to booting from this image as late as possible */
+ 	boot_successful();
+ 
++	#if 0	//pc2005
++	printk(BIOS_DEBUG, "0x500 table: ");
++	for (unsigned idx=0;idx<40;idx++) {
++		u8 * dptr = (u8 *)0x500;
++		printk(BIOS_DEBUG, "%02x ", dptr[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++	#endif
++
+ 	printk(BIOS_DEBUG, "Jumping to boot code at %p(%p)\n",
+ 		prog_entry(payload), prog_entry_arg(payload));
+ 
+@@ -196,6 +216,37 @@ void payload_run(void)
+ 	 */
+ 	checkstack(_estack, 0);
+ 
++	#if 0
++	printk(BIOS_DEBUG, "0x500 table: ");
++	for (unsigned idx=0;idx<40;idx++) {
++		u8 * dptr = (u8 *)0x500;
++		printk(BIOS_DEBUG, "%02x ", dptr[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++	#endif
++
++	#if 0
++
++	void* current_address;
++
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	asm volatile(
++
++		"call get_eip\n\t"
++		"get_eip:\n\t"
++		"pop %%eax\n\t"
++		"movl %%eax, %0\n\t"
++		: "=r" (current_address)::"%eax"
++	);
++	printk(BIOS_INFO, "**333 current address: %p\n", current_address);
++	#endif
++
++
++
+ 	prog_run(payload);
+ }
+ 
+diff --git a/src/lib/rmodule.c b/src/lib/rmodule.c
+index 1446440e5a..a9f47af23b 100644
+--- a/src/lib/rmodule.c
++++ b/src/lib/rmodule.c
+@@ -67,13 +67,19 @@ int rmodule_memory_size(const struct rmodule *module)
+ 
+ void *rmodule_parameters(const struct rmodule *module)
+ {
++	// printk(BIOS_NOTICE, "U1\n");
++
+ 	if (!rmodule_is_loaded(module))
+ 		return NULL;
+ 
++	// printk(BIOS_NOTICE, "U2\n");
++
+ 	/* Indicate if there are no parameters. */
+ 	if (module->header->parameters_begin == module->header->parameters_end)
+ 		return NULL;
+ 
++	// printk(BIOS_NOTICE, "U3\n");
++
+ 	return rmodule_load_addr(module, module->header->parameters_begin);
+ }
+ 
+@@ -118,10 +124,14 @@ static void rmodule_copy_payload(const struct rmodule *module)
+ 	       module->location, rmodule_entry(module),
+ 	       module->payload_size, rmodule_memory_size(module));
+ 
++	printk(BIOS_DEBUG, "!!CP %p<-%p\n", module->location, module->payload);
++
+ 	/* No need to copy the payload if the load location and the
+ 	 * payload location are the same. */
+-	if (module->location == module->payload)
++	if (module->location == module->payload) {
++		printk(BIOS_DEBUG, " skip same location\n");
+ 		return;
++	}
+ 
+ 	memcpy(module->location, module->payload, module->payload_size);
+ }
+@@ -180,14 +190,30 @@ int rmodule_load(void *base, struct rmodule *module)
+ 	 *     address the relocations need to be processed before the bss.
+ 	 */
+ 	module->location = base;
++
++	// printk(BIOS_DEBUG, "RM1\n");
++
+ 	rmodule_copy_payload(module);
+-	if (rmodule_relocate(module))
++
++	// printk(BIOS_DEBUG, "RM2\n");
++
++	if (rmodule_relocate(module)) {
++		printk(BIOS_DEBUG, "RM3\n");
++
+ 		return -1;
++	}
++
++	// printk(BIOS_DEBUG, "RM4\n");
++
+ 	rmodule_clear_bss(module);
+ 
++	// printk(BIOS_DEBUG, "RM5\n");
++
+ 	prog_segment_loaded((uintptr_t)module->location,
+ 				rmodule_memory_size(module), SEG_FINAL);
+ 
++	// printk(BIOS_DEBUG, "RM6\n");
++
+ 	return 0;
+ }
+ 
+@@ -250,23 +276,38 @@ int rmodule_stage_load(struct rmod_stage_load *rsl)
+ {
+ 	struct rmodule rmod_stage;
+ 
++	// printk(BIOS_NOTICE, "T1\n");
++
+ 	if (rsl->prog == NULL || prog_name(rsl->prog) == NULL)
+ 		return -1;
+ 
++	// printk(BIOS_NOTICE, "T2\n");
++
+ 	if (prog_locate_hook(rsl->prog))
+ 		return -1;
+ 
++	// printk(BIOS_NOTICE, "T3\n");
++
+ 	void *rmod_loc = cbfs_alloc(prog_name(rsl->prog),
+ 				    rmodule_cbfs_allocator, rsl, NULL);
++
++	// printk(BIOS_NOTICE, "T4\n");
++
+ 	if (!rmod_loc)
+ 		return -1;
+ 
++	// printk(BIOS_NOTICE, "T5\n");
++
+ 	if (rmodule_parse(rmod_loc, &rmod_stage))
+ 		return -1;
+ 
++	// printk(BIOS_NOTICE, "T6\n");
++
+ 	if (rmodule_load(rmod_loc + sizeof(struct rmodule_header), &rmod_stage))
+ 		return -1;
+ 
++	// printk(BIOS_NOTICE, "T7\n");
++
+ 	prog_set_area(rsl->prog, rmod_stage.location,
+ 			rmodule_memory_size(&rmod_stage));
+ 
+@@ -275,5 +316,7 @@ int rmodule_stage_load(struct rmod_stage_load *rsl)
+ 
+ 	prog_set_entry(rsl->prog, rmodule_entry(&rmod_stage), rsl->params);
+ 
++	// printk(BIOS_NOTICE, "T10 fin ok\n");
++
+ 	return 0;
+ }
+diff --git a/util/cbfstool/cbfs-mkstage.c b/util/cbfstool/cbfs-mkstage.c
+index be8573861b..3b10ca07d9 100644
+--- a/util/cbfstool/cbfs-mkstage.c
++++ b/util/cbfstool/cbfs-mkstage.c
+@@ -161,6 +161,12 @@ int parse_elf_to_stage(const struct buffer *input, struct buffer *output,
+ 		if (mend > mem_end)
+ 			mem_end = mend;
+ 
++
++		printf("++++++++++C 0x%08lx 0x%08lx\n",
++			phdr[i].p_paddr,
++			phdr[i].p_vaddr
++		);
++
+ 		if (virt_to_phys == 0)
+ 			virt_to_phys = phdr[i].p_paddr - phdr[i].p_vaddr;
+ 	}
+@@ -311,7 +317,11 @@ int parse_elf_to_xip_stage(const struct buffer *input, struct buffer *output,
+ 	/* Single loadable segment. The entire segment moves to final
+ 	 * location from based on virtual address of loadable segment. */
+ 	adjustment = location - pelf->phdr->p_vaddr;
+-	DEBUG("Relocation adjustment: %08x\n", adjustment);
++	printf("Relocation adjustment: 0x%08x-0x%08lx 0x%08x\n",
++		location,
++		pelf->phdr->p_vaddr,
++		adjustment
++	);
+ 
+ 	fill_cbfs_stageheader(stageheader,
+ 			      (uint32_t)pelf->ehdr.e_entry + adjustment,
+diff --git a/util/cbfstool/cbfs_image.c b/util/cbfstool/cbfs_image.c
+index 683a96cac7..aa48c570b9 100644
+--- a/util/cbfstool/cbfs_image.c
++++ b/util/cbfstool/cbfs_image.c
+@@ -144,6 +144,9 @@ static int cbfs_file_get_compression_info(struct cbfs_file *entry,
+ 	for (struct cbfs_file_attribute *attr = cbfs_file_first_attr(entry);
+ 	     attr != NULL;
+ 	     attr = cbfs_file_next_attr(entry, attr)) {
++
++//		printf("    attr->tag %x\n", be32toh(attr->tag));
++
+ 		if (be32toh(attr->tag) == CBFS_FILE_ATTR_TAG_COMPRESSION) {
+ 			struct cbfs_file_attr_compression *ac =
+ 				(struct cbfs_file_attr_compression *)attr;
+@@ -756,7 +759,7 @@ int cbfs_add_entry(struct cbfs_image *image, struct buffer *buffer,
+ 		next = cbfs_find_next_entry(image, entry);
+ 		addr_next = cbfs_get_entry_addr(image, next);
+ 
+-		DEBUG("cbfs_add_entry: space at 0x%x+0x%x(%d) bytes\n",
++		INFO("cbfs_add_entry: space at 0x%x+0x%x(%d) bytes\n",
+ 		      addr, addr_next - addr, addr_next - addr);
+ 
+ 		/* Will the file fit? Don't yet worry if we have space for a new
+@@ -777,7 +780,7 @@ int cbfs_add_entry(struct cbfs_image *image, struct buffer *buffer,
+ 				ERROR("Not enough space for header.\n");
+ 				break;
+ 			} else if (content_offset + buffer->size > addr_next) {
+-				ERROR("Not enough space for content.\n");
++				ERROR("Not enough space for content. co:%u bs:%lu an:%u\n", content_offset, buffer->size,addr_next);
+ 				break;
+ 			}
+ 		}
+diff --git a/util/cbfstool/cbfstool.c b/util/cbfstool/cbfstool.c
+index d4a6aff426..8b6e835226 100644
+--- a/util/cbfstool/cbfstool.c
++++ b/util/cbfstool/cbfstool.c
+@@ -327,11 +327,19 @@ static struct mmap_window mmap_window_table[MMAP_MAX_WINDOWS];
+ static void add_mmap_window(size_t flash_offset, size_t host_offset,
+ 			    size_t window_size)
+ {
++	printf("%lx %lx %lx\n", flash_offset, host_offset,window_size);
++
+ 	if (mmap_window_table_size >= MMAP_MAX_WINDOWS) {
+ 		ERROR("Too many memory map windows\n");
+ 		return;
+ 	}
+ 
++	printf("= mmap_window_table 0x%08zx 0x%08zx 0x%08zx\n",
++		flash_offset,
++		host_offset,
++		window_size
++	);
++
+ 	mmap_window_table[mmap_window_table_size].flash_space.offset = flash_offset;
+ 	mmap_window_table[mmap_window_table_size].host_space.offset = host_offset;
+ 	mmap_window_table[mmap_window_table_size].flash_space.size = window_size;
+@@ -377,6 +385,8 @@ static int decode_mmap_arg(char *arg)
+ 		return 1;
+ 	}
+ 
++printf("AA1\n");
++
+ 	add_mmap_window(mmap_args.flash_base, mmap_args.mmap_base, mmap_args.mmap_size);
+ 	return 0;
+ }
+@@ -394,15 +404,26 @@ static bool create_mmap_windows(void)
+ 	// No memory map provided, use a default one
+ 	if (mmap_window_table_size == 0) {
+ 		const size_t image_size = partitioned_file_total_size(param.image_file);
+-		printf("Image SIZE %zu\n", image_size);
++
++printf("==========================\n");
++printf("imagesize %zu, window 0x%08x\n", image_size, DEFAULT_DECODE_WINDOW_MAX_SIZE);
++
+ 		const size_t std_window_size = MIN(DEFAULT_DECODE_WINDOW_MAX_SIZE, image_size);
++
++		printf("window_size %zu 0x%08zx\n", std_window_size, std_window_size);
++
+ 		const size_t std_window_flash_offset = image_size - std_window_size;
+ 
++printf("flash_offset %zu\n", std_window_flash_offset);
++
+ 		/*
+ 		 * Default decode window lives just below 4G boundary in host space and maps up to a
+ 		 * maximum of 16MiB. If the window is smaller than 16MiB, the SPI flash window is mapped
+ 		 * at the top of the host window just below 4G.
+ 		 */
++
++printf("= DECODE_WINDOW_TOP 0x%08llx\n", DEFAULT_DECODE_WINDOW_TOP);
++
+ 		add_mmap_window(std_window_flash_offset, DEFAULT_DECODE_WINDOW_TOP - std_window_size, std_window_size);
+ 	} else {
+ 		/*
+@@ -1177,6 +1198,8 @@ static int cbfstool_convert_mkstage(struct buffer *buffer, uint32_t *offset,
+ 
+ 	if (param.stage_xip) {
+ 		uint32_t host_space_address = convert_addr_space(param.image_region, *offset);
++
++		printf("AA3 %x\n", host_space_address);
+ 		assert(IS_HOST_SPACE_ADDRESS(host_space_address));
+ 		ret = parse_elf_to_xip_stage(buffer, &output, host_space_address,
+ 					     param.ignore_section, stageheader);
+@@ -1406,6 +1429,8 @@ static int cbfs_create(void)
+ 	}
+ 
+ 	struct buffer bootblock;
++	// bootblock.size = 0;
++
+ 	if (!param.bootblock) {
+ 		DEBUG("-B not given, creating image without bootblock.\n");
+ 		if (buffer_create(&bootblock, 0, "(dummy)") != 0)
+@@ -1423,35 +1448,35 @@ static int cbfs_create(void)
+ 			// Make sure there's at least enough room for rel_offset
+ 			param.baseaddress = param.size -
+ 					MAX(bootblock.size, sizeof(int32_t));
+-			DEBUG("x86 -> bootblock lies at end of ROM (%#x).\n",
++			INFO("x86 -> bootblock lies at end of ROM (%#x).\n",
+ 			      param.baseaddress);
+ 		} else {
+ 			param.baseaddress = 0;
+-			DEBUG("bootblock starts at address 0x0.\n");
++			INFO("bootblock starts at address 0x0.\n");
+ 		}
+ 	}
+ 	if (!param.headeroffset_assigned) {
+ 		if (param.arch == CBFS_ARCHITECTURE_X86) {
+ 			param.headeroffset = param.baseaddress -
+ 					     sizeof(struct cbfs_header);
+-			DEBUG("x86 -> CBFS header before bootblock (%#x).\n",
++			INFO("x86 -> CBFS header before bootblock (%#x).\n",
+ 				param.headeroffset);
+ 		} else {
+ 			param.headeroffset = align_up(param.baseaddress +
+ 				bootblock.size, sizeof(uint32_t));
+-			DEBUG("CBFS header placed behind bootblock (%#x).\n",
++			INFO("CBFS header placed behind bootblock (%#x).\n",
+ 				param.headeroffset);
+ 		}
+ 	}
+ 	if (!param.cbfsoffset_assigned) {
+ 		if (param.arch == CBFS_ARCHITECTURE_X86) {
+ 			param.cbfsoffset = 0;
+-			DEBUG("x86 -> CBFS entries start at address 0x0.\n");
++			INFO("x86 -> CBFS entries start at address 0x0.\n");
+ 		} else {
+ 			param.cbfsoffset = align_up(param.headeroffset +
+ 						    sizeof(struct cbfs_header),
+ 						    CBFS_ALIGNMENT);
+-			DEBUG("CBFS entries start beind master header (%#x).\n",
++			INFO("CBFS entries start beind master header (%#x).\n",
+ 			      param.cbfsoffset);
+ 		}
+ 	}
+@@ -1677,7 +1702,7 @@ static int cbfs_write(void)
+ 			return 1;
+ 		}
+ 		if (param.u64val == (uint64_t)-1) {
+-			WARN("Written area will abut %s of target region: any unused space will keep its current contents\n",
++			WARN("Written area will about %s of target region: any unused space will keep its current contents\n",
+ 					param.fill_partial_upward ? "bottom" : "top");
+ 		} else if (param.u64val > 0xff) {
+ 			ERROR("given fill value (%x) is larger than a byte\n", (unsigned)(param.u64val & 0xff));
+diff --git a/util/cbfstool/lzma/lzma.c b/util/cbfstool/lzma/lzma.c
+index 986ebfaa22..4a95ccbc88 100644
+--- a/util/cbfstool/lzma/lzma.c
++++ b/util/cbfstool/lzma/lzma.c
+@@ -103,11 +103,13 @@ int do_lzma_compress(char *in, int in_len, char *out, int *out_len)
+ 
+ 	switch (props.algo) {
+ 	case 0:	// quick: HC4
++INFO("compression level 1\n");
+ 		props.btMode = 0;
+ 		props.level = 1;
+ 		break;
+ 	case 1:	// full: BT4
+ 	default:
++INFO("compression level 9\n");
+ 		props.level = 9;
+ 		props.btMode = 1;
+ 		props.numHashBytes = 4;
+diff --git a/util/cbfstool/rmodule.c b/util/cbfstool/rmodule.c
+index 02f1d90785..64da3e5ca5 100644
+--- a/util/cbfstool/rmodule.c
++++ b/util/cbfstool/rmodule.c
+@@ -553,10 +553,16 @@ write_elf(const struct rmod_context *ctx, const struct buffer *in,
+ 		loc += ctx->nrelocs * sizeof(Elf32_Addr);
+ 	ctx->xdr->put32(&rmod_header, loc);
+ 	/* module_link_start_address */
++
++	printf("++++++++++A 0x%08lx\n", ctx->phdr->p_vaddr);
++
+ 	ctx->xdr->put32(&rmod_header, ctx->phdr->p_vaddr);
+ 	/* module_program_size */
+ 	ctx->xdr->put32(&rmod_header, ctx->phdr->p_memsz);
+ 	/* module_entry_point */
++
++	printf("++++++++++B 0x%08lx\n", ctx->pelf.ehdr.e_entry);
++
+ 	ctx->xdr->put32(&rmod_header, ctx->pelf.ehdr.e_entry);
+ 	/* parameters_begin */
+ 	ctx->xdr->put32(&rmod_header, ctx->parameters_begin);
+-- 
+2.46.1
+

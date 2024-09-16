@@ -1,0 +1,34 @@
+From 7ce898c033ca58facc5005b1314c5f5159cbc642 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:23:41 +0200
+Subject: [PATCH 09/27] debug user timer interrupt handler
+
+---
+ src/clock.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/clock.c b/src/clock.c
+index e44e1120..ac4d529d 100644
+--- a/src/clock.c
++++ b/src/clock.c
+@@ -298,6 +298,17 @@ clock_update(void)
+     sercon_check_event();
+ }
+ 
++#if 0
++// default user timer Entry Point
++void VISIBLE16
++handle_1c(void)
++{
++//TODO debug
++//    debug_isr(DEBUG_ISR_1C);
++}
++#endif
++
++
+ // INT 08h System Timer ISR Entry Point
+ void VISIBLE16
+ handle_08(void)
+-- 
+2.46.1
+

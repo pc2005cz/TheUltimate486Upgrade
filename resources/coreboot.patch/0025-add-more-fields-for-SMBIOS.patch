@@ -1,0 +1,50 @@
+From 15af16cb2e047b01aa0f277b380e9444aba2a192 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:40:02 +0200
+Subject: [PATCH 25/26] add more fields for SMBIOS
+
+especially those which are relevant for 486
+---
+ src/include/smbios.h | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/src/include/smbios.h b/src/include/smbios.h
+index 446652c2a9..1852e9c2b6 100644
+--- a/src/include/smbios.h
++++ b/src/include/smbios.h
+@@ -99,15 +99,32 @@ int smbios_write_type8(unsigned long *current, int *handle,
+ 			const struct port_information *port,
+ 			size_t num_ports);
+ 
++#define BIOS_CHARACTERISTICS_ISA_SUPPORTED	(1 << 4)
+ #define BIOS_CHARACTERISTICS_PCI_SUPPORTED	(1 << 7)
+ #define BIOS_CHARACTERISTICS_PC_CARD		(1 << 8)
+ #define BIOS_CHARACTERISTICS_PNP		(1 << 9)
+ #define BIOS_CHARACTERISTICS_APM		(1 << 10)
+ #define BIOS_CHARACTERISTICS_UPGRADEABLE	(1 << 11)
+ #define BIOS_CHARACTERISTICS_SHADOW		(1 << 12)
++#define BIOS_CHARACTERISTICS_VLBUS_SUPPORTED	(1 << 13)
+ #define BIOS_CHARACTERISTICS_BOOT_FROM_CD	(1 << 15)
+ #define BIOS_CHARACTERISTICS_SELECTABLE_BOOT	(1 << 16)
+ #define BIOS_CHARACTERISTICS_BIOS_SOCKETED	(1 << 17)
++#define BIOS_CHARACTERISTICS_EDD_SUPPORTED	(1 << 19)
++
++#define BIOS_CHARACTERISTICS_FDD_525_360K_SUPPORTED	(1 << 22)
++#define BIOS_CHARACTERISTICS_FDD_525_1M2_SUPPORTED	(1 << 23)
++#define BIOS_CHARACTERISTICS_FDD_35_720K_SUPPORTED	(1 << 24)
++#define BIOS_CHARACTERISTICS_FDD_35_2M88_SUPPORTED	(1 << 25)
++
++#define BIOS_CHARACTERISTICS_INT_5H_PRNTSCR	(1 << 26)
++#define BIOS_CHARACTERISTICS_INT_9H_KBD		(1 << 27)
++#define BIOS_CHARACTERISTICS_INT_14H_SERIAL	(1 << 28)
++#define BIOS_CHARACTERISTICS_INT_17H_PRINTER	(1 << 29)
++
++#define BIOS_CHARACTERISTICS_CGA_SUPPORTED	(1 << 30)
++#define BIOS_CHARACTERISTICS_PC98		(1 << 31)
++
+ 
+ #define BIOS_EXT1_CHARACTERISTICS_ACPI		(1 << 0)
+ #define BIOS_EXT2_CHARACTERISTICS_TARGET	(1 << 2)
+-- 
+2.46.1
+

@@ -1,0 +1,61 @@
+From 40f9d4e26e741261f923c85227df83b4765f36c8 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 04:53:29 +0200
+Subject: [PATCH 06/26] 128kB BIOS size support
+
+---
+ src/mainboard/Kconfig | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/mainboard/Kconfig b/src/mainboard/Kconfig
+index aec996ab0b..b3f92249d2 100644
+--- a/src/mainboard/Kconfig
++++ b/src/mainboard/Kconfig
+@@ -22,6 +22,8 @@ config MAINBOARD_VENDOR
+ config VARIANT_DIR
+ 	string
+ 
++config BOARD_ROMSIZE_KB_128
++	bool
+ config BOARD_ROMSIZE_KB_256
+ 	bool
+ config BOARD_ROMSIZE_KB_512
+@@ -52,6 +54,7 @@ config BOARD_ROMSIZE_KB_65536
+ # TODO: No help text possible for choice fields?
+ choice
+ 	prompt "ROM chip size"
++	default COREBOOT_ROMSIZE_KB_128   if BOARD_ROMSIZE_KB_128
+ 	default COREBOOT_ROMSIZE_KB_256   if BOARD_ROMSIZE_KB_256
+ 	default COREBOOT_ROMSIZE_KB_512   if BOARD_ROMSIZE_KB_512
+ 	default COREBOOT_ROMSIZE_KB_1024  if BOARD_ROMSIZE_KB_1024
+@@ -71,6 +74,11 @@ choice
+ 	  The build system will take care of creating a coreboot.rom file
+ 	  of the matching size.
+ 
++config COREBOOT_ROMSIZE_KB_128
++	bool "128 KB"
++	help
++	  Choose this option if you have a 128 KB ROM chip.
++
+ config COREBOOT_ROMSIZE_KB_256
+ 	bool "256 KB"
+ 	help
+@@ -141,6 +149,7 @@ endchoice
+ # Map the config names to an integer (KB).
+ config COREBOOT_ROMSIZE_KB
+ 	int
++	default   128 if COREBOOT_ROMSIZE_KB_128
+ 	default   256 if COREBOOT_ROMSIZE_KB_256
+ 	default   512 if COREBOOT_ROMSIZE_KB_512
+ 	default  1024 if COREBOOT_ROMSIZE_KB_1024
+@@ -158,6 +167,7 @@ config COREBOOT_ROMSIZE_KB
+ # Map the config names to a hex value (bytes).
+ config ROM_SIZE
+ 	hex
++	default 0x00020000 if COREBOOT_ROMSIZE_KB_128
+ 	default 0x00040000 if COREBOOT_ROMSIZE_KB_256
+ 	default 0x00080000 if COREBOOT_ROMSIZE_KB_512
+ 	default 0x00100000 if COREBOOT_ROMSIZE_KB_1024
+-- 
+2.46.1
+

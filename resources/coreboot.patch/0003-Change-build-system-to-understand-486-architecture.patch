@@ -1,0 +1,1280 @@
+From 2acae3ac34ca497d8f029a07bd30598c4d5b784e Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 04:47:34 +0200
+Subject: [PATCH 03/26] Change build system to understand 486 architecture
+
+---
+ Makefile.inc                             | 290 ++++++++++++-----------
+ payloads/Kconfig                         |  16 +-
+ payloads/external/BOOTBOOT/Kconfig.name  |   2 +-
+ payloads/external/FILO/Kconfig.name      |   2 +-
+ payloads/external/GRUB2/Kconfig.name     |   4 +-
+ payloads/external/LinuxBoot/Kconfig      |   2 +-
+ payloads/external/SeaBIOS/Kconfig.name   |   2 +-
+ payloads/external/U-Boot/Kconfig.name    |   2 +-
+ payloads/external/edk2/Kconfig.name      |   2 +-
+ payloads/external/iPXE/Kconfig           |   2 +-
+ payloads/external/linux/Kconfig.name     |   2 +-
+ payloads/linuxcheck/Makefile             |   4 +
+ src/Kconfig                              |  35 ++-
+ src/console/Kconfig                      |   2 +-
+ src/cpu/Kconfig                          |   4 +-
+ src/cpu/Makefile.inc                     |   8 +
+ src/device/Kconfig                       |  14 +-
+ src/drivers/i2c/tpm/Kconfig              |   2 +-
+ src/drivers/pc80/pc/Makefile.inc         |   8 +-
+ src/drivers/pc80/rtc/Kconfig             |   2 +-
+ src/drivers/pc80/rtc/Makefile.inc        |   8 +-
+ src/drivers/pc80/vga/Makefile.inc        |   8 +-
+ src/drivers/spi/Kconfig                  |   2 +-
+ src/drivers/uart/Kconfig                 |   2 +-
+ src/security/memory/Kconfig              |   2 +-
+ src/security/memory/memory_clear.c       |   2 +-
+ src/security/tpm/tss/vendor/cr50/Kconfig |   2 +-
+ src/security/vboot/Kconfig               |   2 +-
+ src/vendorcode/amd/pi/Makefile.inc       |   2 +-
+ tests/Makefile.common                    |   2 +-
+ tests/lib/Makefile.inc                   |   2 +-
+ toolchain.inc                            |   3 +-
+ util/inteltool/Makefile                  |   2 +-
+ util/release/genrelnotes                 |   2 +-
+ util/uio_usbdebug/Makefile               |   1 +
+ util/vgabios/include/config.h            |   2 +-
+ util/xcompile/xcompile                   |   6 +-
+ 37 files changed, 262 insertions(+), 193 deletions(-)
+
+diff --git a/Makefile.inc b/Makefile.inc
+index 96121d4019..6fa992fb82 100644
+--- a/Makefile.inc
++++ b/Makefile.inc
+@@ -182,7 +182,7 @@ files-in-dir=$(filter-out $(addsuffix %,$(call dirs-below-dir,$(1),$(2))),$(call
+ # directory into an intermediate file
+ ramstage-postprocess=$$(eval DEPENDENCIES+=$$(addsuffix .d,$$(basename $(1)))) \
+ 	$(foreach d,$(sort $(dir $(filter-out %.ld,$(1)))), \
+-	$(eval $(d)ramstage.a: $(call files-in-dir,$(d),$(filter-out %.ld,$(1))); rm -f $$@ && $(AR_ramstage) rcsT $$@ $$^ ) \
++	$(eval $(d)ramstage.a: $(call files-in-dir,$(d),$(filter-out %.ld,$(1))); echo rm -f $$@ && $(AR_ramstage) rcsT $$@ $$^ ) \
+ 	$(eval ramstage-objs:=$(d)ramstage.a $(filter-out $(filter-out %.ld, $(call files-in-dir,$(d),$(1))),$(ramstage-objs))))
+ 
+ decompressor-generic-ccopts += -D__DECOMPRESSOR__
+@@ -234,7 +234,7 @@ $(foreach type,ads adb, \
+ # Add handler to copy linker scripts
+ define generic-objs_ld_template_gen
+ de$(EMPTY)fine $(1)-objs_ld_template
+-$$(call src-to-obj,$1,$$(1).ld): $$(1).ld $(obj)/config.h $(obj)/fmap_config.h
++$$(call src-to-obj,$1,$$(1).ld): $$(1).ld $(obj)/config.h
+ 	@printf "    CP         $$$$(subst $$$$(obj)/,,$$$$(@))\n"
+ 	$$(CC_$(1)) -MMD $$(CPPFLAGS_$(1)) $$($(1)-ld-ccopts) $(PREPROCESS_ONLY) -include $(obj)/config.h -MT $$$$@ -o $$$$@ $$$$<
+ en$(EMPTY)def
+@@ -318,7 +318,7 @@ define cbfs-files-processor-config
+ 		cat $(2).tmp2 >> $(2).tmp && \
+ 		printf "# End of defconfig. Derivable values start here.\n" >> $(2).tmp && \
+ 		grep "^CONFIG" $(1) | grep -F -v -f $(2).tmp2 >> $(2).tmp && \
+-		rm -f $(2).tmp2 && \
++		echo rm -f $(2).tmp2 && \
+ 		mv -f $(2).tmp $(2))
+ endef
+ 
+@@ -327,11 +327,11 @@ endef
+ # arg1: C source file
+ # arg2: binary file
+ cbfs-files-processor-struct= \
+-	$(eval $(2): $(1) $(obj)/build.h $(obj)/fmap_config.h $(KCONFIG_AUTOHEADER); \
++	$(eval $(2): $(1) $(obj)/build.h $(KCONFIG_AUTOHEADER); \
+ 		printf "    CC+STRIP   $(1)\n"; \
+ 		$(CC_ramstage) -MMD $(CPPFLAGS_ramstage) $(CFLAGS_ramstage) --param asan-globals=0 $$(ramstage-c-ccopts) -include $(KCONFIG_AUTOHEADER) -MT $(2) -o $(2).tmp -c $(1) && \
+ 		$(OBJCOPY_ramstage) -O binary --only-section='.data*' --only-section='.bss*' --set-section-flags .bss*=alloc,contents,load $(2).tmp $(2); \
+-		rm -f $(2).tmp) \
++		echo rm -f $(2).tmp) \
+ 	$(eval DEPENDENCIES += $(2).d)
+ 
+ #######################################################################
+@@ -419,7 +419,8 @@ ifeq ($(CONFIG_PCI_OPTION_ROM_RUN_YABEL)$(CONFIG_PCI_OPTION_ROM_RUN_REALMODE),y)
+ CPPFLAGS_ramstage += -Isrc/device/oprom/include
+ endif
+ 
+-CFLAGS_common += -pipe -g -nostdinc -std=gnu11
++#pc2005 -Wno-error=array-bounds
++CFLAGS_common += -pipe -g -nostdinc -std=gnu11 -Wno-error=array-bounds
+ CFLAGS_common += -nostdlib -Wall -Wundef -Wstrict-prototypes -Wmissing-prototypes
+ CFLAGS_common += -Wwrite-strings -Wredundant-decls -Wno-trigraphs -Wimplicit-fallthrough
+ CFLAGS_common += -Wshadow -Wdate-time -Wtype-limits -Wvla -Wold-style-definition
+@@ -543,7 +544,7 @@ $(obj)/build_info:
+ #######################################################################
+ # Build the tools
+ CBFSTOOL:=$(objutil)/cbfstool/cbfstool
+-FMAPTOOL:=$(objutil)/cbfstool/fmaptool
++# FMAPTOOL:=$(objutil)/cbfstool/fmaptool
+ RMODTOOL:=$(objutil)/cbfstool/rmodtool
+ IFWITOOL:=$(objutil)/cbfstool/ifwitool
+ IFITTOOL:=$(objutil)/cbfstool/ifittool
+@@ -554,8 +555,8 @@ CSE_SERGER:=$(objutil)/cbfstool/cse_serger
+ $(obj)/cbfstool: $(CBFSTOOL)
+ 	cp $< $@
+ 
+-$(obj)/fmaptool: $(FMAPTOOL)
+-	cp $< $@
++# $(obj)/fmaptool: $(FMAPTOOL)
++# 	cp $< $@
+ 
+ $(obj)/rmodtool: $(RMODTOOL)
+ 	cp $< $@
+@@ -691,7 +692,7 @@ install-git-commit-clangfmt:
+ include util/crossgcc/Makefile.inc
+ 
+ .PHONY: tools
+-tools: $(objutil)/kconfig/conf $(objutil)/kconfig/toada $(CBFSTOOL) $(objutil)/cbfstool/cbfs-compression-tool $(FMAPTOOL) $(RMODTOOL) $(IFWITOOL) $(objutil)/nvramtool/nvramtool $(objutil)/sconfig/sconfig $(IFDTOOL) $(CBOOTIMAGE) $(AMDFWTOOL) $(AMDCOMPRESS) $(FUTILITY) $(BINCFG) $(IFITTOOL) $(objutil)/supermicro/smcbiosinfo $(CSE_FPT) $(CSE_SERGER) $(AMDFWREAD)
++tools: $(objutil)/kconfig/conf $(objutil)/kconfig/toada $(CBFSTOOL) $(objutil)/cbfstool/cbfs-compression-tool $(RMODTOOL) $(IFWITOOL) $(objutil)/nvramtool/nvramtool $(objutil)/sconfig/sconfig $(IFDTOOL) $(CBOOTIMAGE) $(AMDFWTOOL) $(AMDCOMPRESS) $(FUTILITY) $(BINCFG) $(IFITTOOL) $(objutil)/supermicro/smcbiosinfo $(CSE_FPT) $(CSE_SERGER) $(AMDFWREAD)
+ 
+ ###########################################################################
+ # Common recipes for all stages
+@@ -741,7 +742,7 @@ $(objcbfs)/bootblock.lz4: $(objcbfs)/bootblock.elf $(objutil)/cbfstool/cbfs-comp
+ 	$(OBJCOPY_bootblock) $(preserve-bss-flags) $< $@.tmp
+ 	$(OBJCOPY_bootblock) -O binary $@.tmp
+ 	$(objutil)/cbfstool/cbfs-compression-tool rawcompress $@.tmp $@.tmp2 lz4
+-	rm -f $@.tmp
++	echo rm -f $@.tmp
+ 	mv $@.tmp2 $@
+ 
+ # Put assembled decompressor+bootblock into bootblock.raw.elf so that SoC
+@@ -839,13 +840,12 @@ define cbfs-add-cmd-for-region
+ 	add$(if $(filter stage,$(call extract_nth,3,$(1))),-stage)$(if \
+ 		$(filter payload,$(call extract_nth,3,$(1))),-payload)$(if \
+ 		$(filter flat-binary,$(call extract_nth,3,$(1))),-flat-binary) \
+-	-f $(call extract_nth,1,$(1)) \
++	-vvv -f $(call extract_nth,1,$(1)) \
+ 	-n $(call extract_nth,2,$(1)) \
+ 	$(if $(filter-out flat-binary payload stage,$(call \
+ 		extract_nth,3,$(1))),-t $(call extract_nth,3,$(1))) \
+ 	$(if $(call extract_nth,4,$(1)),-c $(call extract_nth,4,$(1))) \
+ 	$(cbfs-autogen-attributes) \
+-	-r $(2) \
+ 	$(if $(call extract_nth,6,$(1)),-a $(call extract_nth,6,$(file)), \
+ 		$(if $(call extract_nth,5,$(file)),-b $(call extract_nth,5,$(file)))) \
+ 		$(call extract_nth,7,$(1)) \
+@@ -928,68 +928,76 @@ prebuild-files = $(foreach region,$(all-regions), \
+ ifeq ($(CONFIG_FMDFILE),)
+ # For a description of the flash layout described by these variables, check
+ # the $(DEFAULT_FLASHMAP) .fmd files.
++
+ ifeq ($(CONFIG_ARCH_X86),y)
+-DEFAULT_FLASHMAP:=$(top)/util/cbfstool/default-x86.fmd
+-# entire flash
+-FMAP_ROM_ADDR := $(call int-subtract, 0x100000000 $(CONFIG_ROM_SIZE))
+-FMAP_ROM_SIZE := $(CONFIG_ROM_SIZE)
+-# entire "BIOS" region (everything directly of concern to the host system)
+-# relative to ROM_BASE
+-FMAP_BIOS_BASE := $(call int-align, $(call int-subtract, $(CONFIG_ROM_SIZE) $(CONFIG_CBFS_SIZE)), 0x10000)
+-FMAP_BIOS_SIZE := $(call int-align-down, $(shell echo $(CONFIG_CBFS_SIZE) | tr A-F a-f), 0x10000)
+-# position and size of flashmap, relative to BIOS_BASE
++	ANY86:=y
++else ifeq ($(CONFIG_ARCH_486),y)
++	ANY86:=y
++endif
+ 
++ifeq ($(ANY86),y)
++# DEFAULT_FLASHMAP:=$(top)/util/cbfstool/default-x86.fmd
++# # entire flash
++# #FMAP_ROM_ADDR := $(call int-subtract, 0x100000000 $(CONFIG_ROM_SIZE))
++# FMAP_ROM_ADDR := $(call int-subtract, 0x100000 $(CONFIG_ROM_SIZE))
++# FMAP_ROM_SIZE := $(CONFIG_ROM_SIZE)
++# # entire "BIOS" region (everything directly of concern to the host system)
++# # relative to ROM_BASE
++# FMAP_BIOS_BASE := $(call int-align, $(call int-subtract, $(CONFIG_ROM_SIZE) $(CONFIG_CBFS_SIZE)), 0x10000)
++# FMAP_BIOS_SIZE := $(call int-align-down, $(shell echo $(CONFIG_CBFS_SIZE) | tr A-F a-f), 0x10000)
++# # position and size of flashmap, relative to BIOS_BASE
+ #
+-# X86 CONSOLE FMAP region
++# #
++# # X86 CONSOLE FMAP region
++# #
++# # position, size and entry line of CONSOLE relative to BIOS_BASE, if enabled
+ #
+-# position, size and entry line of CONSOLE relative to BIOS_BASE, if enabled
+-
+-FMAP_CURRENT_BASE := 0
++# FMAP_CURRENT_BASE := 0
+ 
+ ifeq ($(CONFIG_CONSOLE_SPI_FLASH),y)
+-FMAP_CONSOLE_BASE := $(FMAP_CURRENT_BASE)
+-FMAP_CONSOLE_SIZE := $(CONFIG_CONSOLE_SPI_FLASH_BUFFER_SIZE)
+-FMAP_CONSOLE_ENTRY := CONSOLE@$(FMAP_CONSOLE_BASE) $(FMAP_CONSOLE_SIZE)
+-FMAP_CURRENT_BASE := $(call int-add, $(FMAP_CONSOLE_BASE) $(FMAP_CONSOLE_SIZE))
++# FMAP_CONSOLE_BASE := $(FMAP_CURRENT_BASE)
++# FMAP_CONSOLE_SIZE := $(CONFIG_CONSOLE_SPI_FLASH_BUFFER_SIZE)
++# FMAP_CONSOLE_ENTRY := CONSOLE@$(FMAP_CONSOLE_BASE) $(FMAP_CONSOLE_SIZE)
++# FMAP_CURRENT_BASE := $(call int-add, $(FMAP_CONSOLE_BASE) $(FMAP_CONSOLE_SIZE))
+ else
+-FMAP_CONSOLE_ENTRY :=
++# FMAP_CONSOLE_ENTRY :=
+ endif
+ 
+ ifeq ($(CONFIG_CACHE_MRC_SETTINGS),y)
+-FMAP_MRC_CACHE_BASE := $(call int-align, $(FMAP_CURRENT_BASE), 0x10000)
+-FMAP_MRC_CACHE_SIZE := $(CONFIG_MRC_SETTINGS_CACHE_SIZE)
+-FMAP_MRC_CACHE_ENTRY := RW_MRC_CACHE@$(FMAP_MRC_CACHE_BASE) $(FMAP_MRC_CACHE_SIZE)
+-FMAP_CURRENT_BASE := $(call int-add, $(FMAP_MRC_CACHE_BASE) $(FMAP_MRC_CACHE_SIZE))
++# FMAP_MRC_CACHE_BASE := $(call int-align, $(FMAP_CURRENT_BASE), 0x10000)
++# FMAP_MRC_CACHE_SIZE := $(CONFIG_MRC_SETTINGS_CACHE_SIZE)
++# FMAP_MRC_CACHE_ENTRY := RW_MRC_CACHE@$(FMAP_MRC_CACHE_BASE) $(FMAP_MRC_CACHE_SIZE)
++# FMAP_CURRENT_BASE := $(call int-add, $(FMAP_MRC_CACHE_BASE) $(FMAP_MRC_CACHE_SIZE))
+ else
+-FMAP_MRC_CACHE_ENTRY :=
++# FMAP_MRC_CACHE_ENTRY :=
+ endif
+ 
+ ifeq ($(CONFIG_SMMSTORE),y)
+-FMAP_SMMSTORE_BASE := $(call int-align, $(FMAP_CURRENT_BASE), 0x10000)
+-FMAP_SMMSTORE_SIZE := $(CONFIG_SMMSTORE_SIZE)
+-FMAP_SMMSTORE_ENTRY := SMMSTORE@$(FMAP_SMMSTORE_BASE) $(FMAP_SMMSTORE_SIZE)
+-FMAP_CURRENT_BASE := $(call int-add, $(FMAP_SMMSTORE_BASE) $(FMAP_SMMSTORE_SIZE))
++# FMAP_SMMSTORE_BASE := $(call int-align, $(FMAP_CURRENT_BASE), 0x10000)
++# FMAP_SMMSTORE_SIZE := $(CONFIG_SMMSTORE_SIZE)
++# FMAP_SMMSTORE_ENTRY := SMMSTORE@$(FMAP_SMMSTORE_BASE) $(FMAP_SMMSTORE_SIZE)
++# FMAP_CURRENT_BASE := $(call int-add, $(FMAP_SMMSTORE_BASE) $(FMAP_SMMSTORE_SIZE))
+ else
+-FMAP_SMMSTORE_ENTRY :=
++# FMAP_SMMSTORE_ENTRY :=
+ endif
+ 
+ ifeq ($(CONFIG_SPD_CACHE_IN_FMAP),y)
+-FMAP_SPD_CACHE_BASE := $(call int-align, $(FMAP_CURRENT_BASE), 0x4000)
+-FMAP_SPD_CACHE_SIZE := $(call int-multiply, $(CONFIG_DIMM_MAX) $(CONFIG_DIMM_SPD_SIZE))
+-FMAP_SPD_CACHE_SIZE := $(call int-align, $(FMAP_SPD_CACHE_SIZE), 0x1000)
+-FMAP_SPD_CACHE_ENTRY := $(CONFIG_SPD_CACHE_FMAP_NAME)@$(FMAP_SPD_CACHE_BASE) $(FMAP_SPD_CACHE_SIZE)
+-FMAP_CURRENT_BASE := $(call int-add, $(FMAP_SPD_CACHE_BASE) $(FMAP_SPD_CACHE_SIZE))
++# FMAP_SPD_CACHE_BASE := $(call int-align, $(FMAP_CURRENT_BASE), 0x4000)
++# FMAP_SPD_CACHE_SIZE := $(call int-multiply, $(CONFIG_DIMM_MAX) $(CONFIG_DIMM_SPD_SIZE))
++# FMAP_SPD_CACHE_SIZE := $(call int-align, $(FMAP_SPD_CACHE_SIZE), 0x1000)
++# FMAP_SPD_CACHE_ENTRY := $(CONFIG_SPD_CACHE_FMAP_NAME)@$(FMAP_SPD_CACHE_BASE) $(FMAP_SPD_CACHE_SIZE)
++# FMAP_CURRENT_BASE := $(call int-add, $(FMAP_SPD_CACHE_BASE) $(FMAP_SPD_CACHE_SIZE))
+ else
+-FMAP_SPD_CACHE_ENTRY :=
++# FMAP_SPD_CACHE_ENTRY :=
+ endif
+ 
+ ifeq ($(CONFIG_VPD),y)
+-FMAP_VPD_BASE := $(call int-align, $(FMAP_CURRENT_BASE), 0x4000)
+-FMAP_VPD_SIZE := $(CONFIG_VPD_FMAP_SIZE)
+-FMAP_VPD_ENTRY := $(CONFIG_VPD_FMAP_NAME)@$(FMAP_VPD_BASE) $(FMAP_VPD_SIZE)
+-FMAP_CURRENT_BASE := $(call int-add, $(FMAP_VPD_BASE) $(FMAP_VPD_SIZE))
++# FMAP_VPD_BASE := $(call int-align, $(FMAP_CURRENT_BASE), 0x4000)
++# FMAP_VPD_SIZE := $(CONFIG_VPD_FMAP_SIZE)
++# FMAP_VPD_ENTRY := $(CONFIG_VPD_FMAP_NAME)@$(FMAP_VPD_BASE) $(FMAP_VPD_SIZE)
++# FMAP_CURRENT_BASE := $(call int-add, $(FMAP_VPD_BASE) $(FMAP_VPD_SIZE))
+ else
+-FMAP_VPD_ENTRY :=
++# FMAP_VPD_ENTRY :=
+ endif
+ 
+ #
+@@ -997,43 +1005,49 @@ endif
+ #
+ #
+ # position, size
+-FMAP_FMAP_BASE := $(FMAP_CURRENT_BASE)
+-FMAP_FMAP_SIZE := 0x200
++# FMAP_FMAP_BASE := $(FMAP_CURRENT_BASE)
++#pc2005 !!! size FMAP takes 32 bytes for each section name!!!
++#minimal size = 256 B ?
++#FMAP_FMAP_SIZE := 256
++
++#FMAP_SIZE 0xb6
+ 
++# + 32bit cbfs alignment
++# FMAP_FMAP_SIZE := 0xe0
+ #
+ # X86 COREBOOT default cbfs FMAP region
+ #
+ # position and size of CBFS, relative to BIOS_BASE
+-FMAP_CBFS_BASE := $(call int-add, $(FMAP_FMAP_BASE) $(FMAP_FMAP_SIZE))
+-FMAP_CBFS_SIZE := $(call int-subtract, $(FMAP_BIOS_SIZE) $(FMAP_CBFS_BASE))
+-
+-else # ifeq ($(CONFIG_ARCH_X86),y)
+-
+-DEFAULT_FLASHMAP:=$(top)/util/cbfstool/default.fmd
+-# entire flash
+-FMAP_ROM_ADDR := 0
+-FMAP_ROM_SIZE := $(CONFIG_ROM_SIZE)
+-# entire "BIOS" region (everything directly of concern to the host system)
+-# relative to ROM_BASE
+-FMAP_BIOS_BASE := 0
+-FMAP_BIOS_SIZE := $(CONFIG_CBFS_SIZE)
+-# position and size of flashmap, relative to BIOS_BASE
+-FMAP_FMAP_BASE := 0x20000
+-FMAP_FMAP_SIZE := 0x200
+-
+-FMAP_CURRENT_BASE := $(call int-add, $(FMAP_FMAP_BASE) $(FMAP_FMAP_SIZE))
++# FMAP_CBFS_BASE := $(call int-add, $(FMAP_FMAP_BASE) $(FMAP_FMAP_SIZE))
++# FMAP_CBFS_SIZE := $(call int-subtract, $(FMAP_BIOS_SIZE) $(FMAP_CBFS_BASE))
++
++else # !CONFIG_ARCH_X86/486
++
++# DEFAULT_FLASHMAP:=$(top)/util/cbfstool/default.fmd
++# # entire flash
++# FMAP_ROM_ADDR := 0
++# FMAP_ROM_SIZE := $(CONFIG_ROM_SIZE)
++# # entire "BIOS" region (everything directly of concern to the host system)
++# # relative to ROM_BASE
++# FMAP_BIOS_BASE := 0
++# FMAP_BIOS_SIZE := $(CONFIG_CBFS_SIZE)
++# # position and size of flashmap, relative to BIOS_BASE
++# FMAP_FMAP_BASE := 0x20000
++# FMAP_FMAP_SIZE := 0x200
++#
++# FMAP_CURRENT_BASE := $(call int-add, $(FMAP_FMAP_BASE) $(FMAP_FMAP_SIZE))
+ 
+ #
+ # NON-X86 CONSOLE FMAP region
+ #
+ # position, size and entry line of CONSOLE relative to BIOS_BASE, if enabled
+ ifeq ($(CONFIG_CONSOLE_SPI_FLASH),y)
+-FMAP_CONSOLE_BASE := $(FMAP_CURRENT_BASE)
+-FMAP_CONSOLE_SIZE := $(CONFIG_CONSOLE_SPI_FLASH_BUFFER_SIZE)
+-FMAP_CONSOLE_ENTRY := CONSOLE@$(FMAP_CONSOLE_BASE) $(FMAP_CONSOLE_SIZE)
+-FMAP_CURRENT_BASE := $(call int-add, $(FMAP_CONSOLE_BASE) $(FMAP_CONSOLE_SIZE))
++# FMAP_CONSOLE_BASE := $(FMAP_CURRENT_BASE)
++# FMAP_CONSOLE_SIZE := $(CONFIG_CONSOLE_SPI_FLASH_BUFFER_SIZE)
++# FMAP_CONSOLE_ENTRY := CONSOLE@$(FMAP_CONSOLE_BASE) $(FMAP_CONSOLE_SIZE)
++# FMAP_CURRENT_BASE := $(call int-add, $(FMAP_CONSOLE_BASE) $(FMAP_CONSOLE_SIZE))
+ else
+-FMAP_CONSOLE_ENTRY :=
++# FMAP_CONSOLE_ENTRY :=
+ endif
+ 
+ #
+@@ -1041,71 +1055,79 @@ endif
+ #
+ # position, size and entry line of MRC_CACHE relative to BIOS_BASE, if enabled
+ ifeq ($(CONFIG_CACHE_MRC_SETTINGS),y)
+-FMAP_MRC_CACHE_BASE := $(call int-align, $(FMAP_CURRENT_BASE), 0x10000)
+-FMAP_MRC_CACHE_SIZE := $(CONFIG_MRC_SETTINGS_CACHE_SIZE)
+-FMAP_MRC_CACHE_ENTRY := RW_MRC_CACHE@$(FMAP_MRC_CACHE_BASE) $(FMAP_MRC_CACHE_SIZE)
+-FMAP_CURRENT_BASE := $(call int-add, $(FMAP_MRC_CACHE_BASE) $(FMAP_MRC_CACHE_SIZE))
++# FMAP_MRC_CACHE_BASE := $(call int-align, $(FMAP_CURRENT_BASE), 0x10000)
++# FMAP_MRC_CACHE_SIZE := $(CONFIG_MRC_SETTINGS_CACHE_SIZE)
++# FMAP_MRC_CACHE_ENTRY := RW_MRC_CACHE@$(FMAP_MRC_CACHE_BASE) $(FMAP_MRC_CACHE_SIZE)
++# FMAP_CURRENT_BASE := $(call int-add, $(FMAP_MRC_CACHE_BASE) $(FMAP_MRC_CACHE_SIZE))
+ else
+-FMAP_MRC_CACHE_ENTRY :=
++# FMAP_MRC_CACHE_ENTRY :=
+ endif
+ 
+ #
+ # NON-X86 COREBOOT default cbfs FMAP region
+ #
+ # position and size of CBFS, relative to BIOS_BASE
+-FMAP_CBFS_BASE := $(FMAP_CURRENT_BASE)
+-FMAP_CBFS_SIZE := $(call int-subtract,$(FMAP_BIOS_SIZE) $(FMAP_CBFS_BASE))
+-
+-endif # ifeq ($(CONFIG_ARCH_X86),y)
+-
+-$(obj)/fmap.fmd: $(top)/Makefile.inc $(DEFAULT_FLASHMAP) $(obj)/config.h
+-	sed -e "s,##ROM_BASE##,$(FMAP_ROM_ADDR)," \
+-	    -e "s,##ROM_SIZE##,$(FMAP_ROM_SIZE)," \
+-	    -e "s,##BIOS_BASE##,$(FMAP_BIOS_BASE)," \
+-	    -e "s,##BIOS_SIZE##,$(FMAP_BIOS_SIZE)," \
+-	    -e "s,##FMAP_BASE##,$(FMAP_FMAP_BASE)," \
+-	    -e "s,##FMAP_SIZE##,$(FMAP_FMAP_SIZE)," \
+-	    -e "s,##CONSOLE_ENTRY##,$(FMAP_CONSOLE_ENTRY)," \
+-	    -e "s,##MRC_CACHE_ENTRY##,$(FMAP_MRC_CACHE_ENTRY)," \
+-	    -e "s,##SMMSTORE_ENTRY##,$(FMAP_SMMSTORE_ENTRY)," \
+-	    -e "s,##SPD_CACHE_ENTRY##,$(FMAP_SPD_CACHE_ENTRY)," \
+-	    -e "s,##VPD_ENTRY##,$(FMAP_VPD_ENTRY)," \
+-	    -e "s,##CBFS_BASE##,$(FMAP_CBFS_BASE)," \
+-	    -e "s,##CBFS_SIZE##,$(FMAP_CBFS_SIZE)," \
+-		$(DEFAULT_FLASHMAP) > $@.tmp
+-	mv $@.tmp $@
++# FMAP_CBFS_BASE := $(FMAP_CURRENT_BASE)
++# FMAP_CBFS_SIZE := $(call int-subtract,$(FMAP_BIOS_SIZE) $(FMAP_CBFS_BASE))
++
++endif # ifeq ($(CONFIG_ARCH_X86),y)	#486
++#
++# $(obj)/fmap.fmd: $(top)/Makefile.inc $(DEFAULT_FLASHMAP) $(obj)/config.h
++# 	sed -e "s,##ROM_BASE##,$(FMAP_ROM_ADDR)," \
++# 	    -e "s,##ROM_SIZE##,$(FMAP_ROM_SIZE)," \
++# 	    -e "s,##BIOS_BASE##,$(FMAP_BIOS_BASE)," \
++# 	    -e "s,##BIOS_SIZE##,$(FMAP_BIOS_SIZE)," \
++# 	    -e "s,##FMAP_BASE##,$(FMAP_FMAP_BASE)," \
++# 	    -e "s,##FMAP_SIZE##,$(FMAP_FMAP_SIZE)," \
++# 	    -e "s,##CONSOLE_ENTRY##,$(FMAP_CONSOLE_ENTRY)," \
++# 	    -e "s,##MRC_CACHE_ENTRY##,$(FMAP_MRC_CACHE_ENTRY)," \
++# 	    -e "s,##SMMSTORE_ENTRY##,$(FMAP_SMMSTORE_ENTRY)," \
++# 	    -e "s,##SPD_CACHE_ENTRY##,$(FMAP_SPD_CACHE_ENTRY)," \
++# 	    -e "s,##VPD_ENTRY##,$(FMAP_VPD_ENTRY)," \
++# 	    -e "s,##CBFS_BASE##,$(FMAP_CBFS_BASE)," \
++# 	    -e "s,##CBFS_SIZE##,$(FMAP_CBFS_SIZE)," \
++# 		$(DEFAULT_FLASHMAP) > $@.tmp
++# 	mv $@.tmp $@
+ else # ifeq ($(CONFIG_FMDFILE),)
+-$(obj)/fmap.fmd: $(CONFIG_FMDFILE) $(obj)/config.h
+-	$(HOSTCC) $(PREPROCESS_ONLY) -include $(obj)/config.h $< -o $@.pre
+-	mv $@.pre $@
++# $(obj)/fmap.fmd: $(CONFIG_FMDFILE) $(obj)/config.h
++# 	$(HOSTCC) $(PREPROCESS_ONLY) -include $(obj)/config.h $< -o $@.pre
++# 	mv $@.pre $@
+ endif # ifeq ($(CONFIG_FMDFILE),)
+ 
+-# generated at the same time as fmap.fmap
+-$(obj)/fmap_config.h: $(obj)/fmap.fmap
+-	true
+-$(obj)/fmap.desc: $(obj)/fmap.fmap
+-	true
+ 
+-$(obj)/fmap.fmap: $(obj)/fmap.fmd $(FMAPTOOL)
+-	echo "    FMAP       $(FMAPTOOL) -h $(obj)/fmap_config.h $< $@"
+-	$(FMAPTOOL) -h $(obj)/fmap_config.h -R $(obj)/fmap.desc $< $@
++
++
+ 
+ ifeq ($(CONFIG_INTEL_ADD_TOP_SWAP_BOOTBLOCK),y)
+ TS_OPTIONS := -j $(CONFIG_INTEL_TOP_SWAP_BOOTBLOCK_SIZE)
+ endif
+ 
+ ifneq ($(CONFIG_ARCH_X86),y)
+-add_bootblock = $(CBFSTOOL) $(1) write -u -r BOOTBLOCK -f $(2)
++ifneq ($(CONFIG_ARCH_486),y)
++# # # # # add_bootblock = $(CBFSTOOL) $(1) write -u -r BOOTBLOCK -f $(2) -vvv
++
++# add_bootblock = $(CBFSTOOL) $(1) write -u -f $(2) -vvv -b -$(call file-size,$(objcbfs)/bootblock.bin)
++
++add_bootblock = $(CBFSTOOL) $(1) add -n bootblock -t bootblock
++add_bootblock += -f $(2) -vvv -b -$(call file-size,$(objcbfs)/bootblock.bin)
++add_bootblock += $(cbfs-autogen-attributes)
++endif
+ endif
+ 
+ # coreboot.pre doesn't follow the standard Make conventions. It gets modified
+ # by multiple rules, and thus we can't compute the dependencies correctly.
+ $(shell rm -f $(obj)/coreboot.pre)
+ 
++# #pc2005 0x20000
++
+ ifneq ($(CONFIG_UPDATE_IMAGE),y)
+-$(obj)/coreboot.pre: $$(prebuilt-files) $(CBFSTOOL) $(obj)/fmap.fmap $(obj)/fmap.desc $(objcbfs)/bootblock.bin
+-	$(CBFSTOOL) $@.tmp create -M $(obj)/fmap.fmap -r $(shell cat $(obj)/fmap.desc)
+-	printf "    BOOTBLOCK\n"
++$(obj)/coreboot.pre: $$(prebuilt-files) $(CBFSTOOL) $(objcbfs)/bootblock.bin
++	printf " create image + add bootblock\n"
++	$(CBFSTOOL) $@.tmp create \
++	-vvv -m x86 \
++	-s $(CONFIG_ROM_SIZE) \
++	-o $$(( $(CONFIG_ROM_SIZE) - $(CONFIG_CBFS_SIZE) ))
++# 	-B $(objcbfs)/bootblock.bin
+ 	$(call add_bootblock,$@.tmp,$(objcbfs)/bootblock.bin)
+ 	$(prebuild-files) true
+ 	mv $@.tmp $@
+@@ -1142,20 +1164,17 @@ $(obj)/coreboot.rom: $(obj)/coreboot.pre $(CBFSTOOL) $(IFITTOOL) $$(INTERMEDIATE
+ # file (filled with \377 = 0xff) and copy the CBFS image over it.
+ 	dd if=/dev/zero bs=$(call _toint,$(CONFIG_ROM_SIZE)) count=1 2> /dev/null | tr '\000' '\377' > $@.tmp
+ 	dd if=$(obj)/coreboot.pre of=$@.tmp bs=8192 conv=notrunc 2> /dev/null
+-ifeq ($(CONFIG_CPU_INTEL_FIRMWARE_INTERFACE_TABLE),y)
+-# Print final FIT table
+-	$(IFITTOOL) -f $@.tmp -D -r COREBOOT
+-# Print final TS BOOTBLOCK FIT table
+-ifeq ($(CONFIG_INTEL_ADD_TOP_SWAP_BOOTBLOCK),y)
+-	@printf "    TOP SWAP FIT table\n"
+-	$(IFITTOOL) -f $@.tmp -D $(TS_OPTIONS) -r COREBOOT
+-endif # CONFIG_INTEL_ADD_TOP_SWAP_BOOTBLOCK
+-endif # CONFIG_CPU_INTEL_FIRMWARE_INTERFACE_TABLE
++# 	echo "aaaaaaa"
+ 	mv $@.tmp $@
++# 	echo "bbbbbb"
+ 	@printf "    CBFSLAYOUT  $(subst $(obj)/,,$(@))\n\n"
+-	$(CBFSTOOL) $@ layout
++# 	echo "bbbbbb2"
++# 	$(CBFSTOOL) $@ layout
++# 	echo "ccccc"
+ 	@printf "    CBFSPRINT  $(subst $(obj)/,,$(@))\n\n"
++# 	echo "ddddd"
+ 	$(CBFSTOOL) $@ print -r $(subst $(spc),$(comma),$(all-regions))
++# 	echo "eeeee"
+ ifeq ($(CONFIG_CBFS_VERIFICATION),y)
+ 	line=$$($(CBFSTOOL) $@ print -kv 2>/dev/null | grep -F '[CBFS VERIFICATION (COREBOOT)]') ;\
+ 	if ! printf "$$line" | grep -q 'fully valid'; then \
+@@ -1180,7 +1199,9 @@ ifeq ($(CONFIG_ARCH_ROMSTAGE_X86_32)$(CONFIG_ARCH_ROMSTAGE_X86_64),y)
+ # requirements of the program segment.
+ #
+ # Make sure that segment for .car.data is ignored while adding romstage.
+-$(CONFIG_CBFS_PREFIX)/romstage-align := 64
++#pc2005
++$(CONFIG_CBFS_PREFIX)/romstage-align := 4
++#$(CONFIG_CBFS_PREFIX)/romstage-align := 64
+ $(CONFIG_CBFS_PREFIX)/romstage-options := -S ".car.data"
+ 
+ # If CAR does not support execution of code, romstage on x86 is expected to be
+@@ -1204,9 +1225,10 @@ $(CONFIG_CBFS_PREFIX)/ramstage-file := $(RAMSTAGE)
+ $(CONFIG_CBFS_PREFIX)/ramstage-type := stage
+ $(CONFIG_CBFS_PREFIX)/ramstage-compression := $(CBFS_COMPRESS_FLAG)
+ # The AMD LPC SPI DMA controller requires source files to be 64 byte aligned.
+-ifeq ($(CONFIG_SOC_AMD_COMMON_BLOCK_LPC_SPI_DMA),y)
+-$(CONFIG_CBFS_PREFIX)/ramstage-align := 64
+-endif
++#ifeq ($(CONFIG_SOC_AMD_COMMON_BLOCK_LPC_SPI_DMA),y)
++#$(CONFIG_CBFS_PREFIX)/ramstage-align := 64
++#endif
++$(CONFIG_CBFS_PREFIX)/ramstage-align := 1
+ 
+ cbfs-files-$(CONFIG_HAVE_REFCODE_BLOB) += $(CONFIG_CBFS_PREFIX)/refcode
+ $(CONFIG_CBFS_PREFIX)/refcode-file := $(REFCODE_BLOB)
+@@ -1226,7 +1248,7 @@ cbfs-files-$(CONFIG_INCLUDE_CONFIG_FILE) += revision
+ revision-file := $(obj)/build.h
+ revision-type := raw
+ 
+-cbfs-files-y += build_info
++cbfs-files-$(CONFIG_INCLUDE_BUILD_INFO) += build_info
+ build_info-file := $(obj)/build_info
+ build_info-type := raw
+ 
+@@ -1238,11 +1260,13 @@ bootsplash$(BOOTSPLASH_SUFFIX)-type := bootsplash
+ # Ensure that no payload segment overlaps with memory regions used by ramstage
+ # (not for x86 since it can relocate itself in that case)
+ ifneq ($(CONFIG_ARCH_X86),y)
++ifneq ($(CONFIG_ARCH_486),y)
+ check-ramstage-overlap-regions := ramstage
+ check-ramstage-overlap-files :=
+ ifneq ($(CONFIG_PAYLOAD_NONE),y)
+ check-ramstage-overlap-files += $(CONFIG_CBFS_PREFIX)/payload
+ endif
++endif
+ 
+ # will output one or more lines of "<load address in hex> <memlen in decimal>"
+ cbfs-get-segments-cmd = $(CBFSTOOL) $(obj)/coreboot.pre print -v | sed -n \
+diff --git a/payloads/Kconfig b/payloads/Kconfig
+index 2a2773a218..3c51f783db 100644
+--- a/payloads/Kconfig
++++ b/payloads/Kconfig
+@@ -2,7 +2,7 @@ menu "Payload"
+ 
+ config PAYLOAD_NONE
+ 	bool "Don't add a payload"
+-	default y if !ARCH_X86
++	default y if !ARCH_X86 && !ARCH_486
+ 	help
+ 	  Select this option if you want to create an "empty" coreboot
+ 	  ROM image for a certain mainboard, i.e. a coreboot ROM image
+@@ -14,7 +14,7 @@ config PAYLOAD_NONE
+ if !PAYLOAD_NONE
+ choice
+ 	prompt "Payload to add"
+-	default PAYLOAD_SEABIOS if ARCH_X86
++	default PAYLOAD_SEABIOS if ARCH_X86 || ARCH_486
+ 
+ config PAYLOAD_ELF
+ 	bool "An ELF executable payload"
+@@ -114,7 +114,7 @@ menu "Secondary Payloads"
+ config COREINFO_SECONDARY_PAYLOAD
+ 	bool "Load coreinfo as a secondary payload"
+ 	default n
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  coreinfo can be loaded as a secondary payload under SeaBIOS, GRUB,
+ 	  or any other payload that can load additional payloads.
+@@ -131,7 +131,7 @@ config GRUB2_SECONDARY_PAYLOAD
+ config MEMTEST_SECONDARY_PAYLOAD
+ 	bool "Load Memtest86+ as a secondary payload"
+ 	default n
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  Memtest86+ can be loaded as a secondary payload under SeaBIOS, GRUB,
+ 	  or any other payload that can load additional payloads.
+@@ -139,7 +139,7 @@ config MEMTEST_SECONDARY_PAYLOAD
+ config NVRAMCUI_SECONDARY_PAYLOAD
+ 	bool "Load nvramcui as a secondary payload"
+ 	default n
+-	depends on ARCH_X86 && HAVE_OPTION_TABLE
++	depends on (ARCH_X86 || ARCH_486) && HAVE_OPTION_TABLE
+ 	help
+ 	  nvramcui can be loaded as a secondary payload under SeaBIOS, GRUB,
+ 	  or any other payload that can load additional payloads.
+@@ -147,7 +147,7 @@ config NVRAMCUI_SECONDARY_PAYLOAD
+ config SEABIOS_SECONDARY_PAYLOAD
+ 	bool "Load SeaBIOS as a secondary payload"
+ 	default n
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	depends on !PAYLOAD_SEABIOS
+ 	depends on !PAYLOAD_SEAGRUB
+ 	select PAYLOAD_BUILD_SEABIOS
+@@ -158,7 +158,7 @@ config SEABIOS_SECONDARY_PAYLOAD
+ config TINT_SECONDARY_PAYLOAD
+ 	bool "Load tint as a secondary payload"
+ 	default n
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  tint can be loaded as a secondary payload under SeaBIOS, GRUB,
+ 	  or any other payload that can load additional payloads.
+@@ -166,7 +166,7 @@ config TINT_SECONDARY_PAYLOAD
+ config COREDOOM_SECONDARY_PAYLOAD
+ 	bool "Load coreDOOM as a secondary payload"
+ 	default n
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  coreDOOM can be loaded as a secondary payload under SeaBIOS, GRUB,
+ 	  or any other payload that can load additional payloads. Requires a
+diff --git a/payloads/external/BOOTBOOT/Kconfig.name b/payloads/external/BOOTBOOT/Kconfig.name
+index 082a9b1ec2..162bd2e482 100644
+--- a/payloads/external/BOOTBOOT/Kconfig.name
++++ b/payloads/external/BOOTBOOT/Kconfig.name
+@@ -1,6 +1,6 @@
+ config PAYLOAD_BOOTBOOT
+ 	bool "BOOTBOOT"
+-	depends on ARCH_X86 || ARCH_ARM64
++	depends on ARCH_X86 || ARCH_486 || ARCH_ARM64
+ 	help
+ 	  Select this option if you want to build a coreboot image
+ 	  with a BOOTBOOT Protocol payload.
+diff --git a/payloads/external/FILO/Kconfig.name b/payloads/external/FILO/Kconfig.name
+index 37b1f2c28a..7370513858 100644
+--- a/payloads/external/FILO/Kconfig.name
++++ b/payloads/external/FILO/Kconfig.name
+@@ -1,6 +1,6 @@
+ config PAYLOAD_FILO
+ 	bool "FILO"
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  Select this option if you want to build a coreboot image
+ 	  with a FILO payload. If you don't know what this is
+diff --git a/payloads/external/GRUB2/Kconfig.name b/payloads/external/GRUB2/Kconfig.name
+index bfa4af41e4..00e57a7d1a 100644
+--- a/payloads/external/GRUB2/Kconfig.name
++++ b/payloads/external/GRUB2/Kconfig.name
+@@ -1,6 +1,6 @@
+ config PAYLOAD_GRUB2
+ 	bool "GRUB2"
+-	depends on ARCH_X86 || ARCH_ARM
++	depends on ARCH_X86 || ARCH_486 || ARCH_ARM
+ 	select PAYLOAD_BUILD_GRUB2
+ 	help
+ 	  Select this option if you want to build a coreboot image
+@@ -11,7 +11,7 @@ config PAYLOAD_GRUB2
+ 
+ config PAYLOAD_SEAGRUB
+ 	bool "GRUB2 atop SeaBIOS"
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	select PAYLOAD_BUILD_SEABIOS
+ 	select GRUB2_SECONDARY_PAYLOAD
+ 	help
+diff --git a/payloads/external/LinuxBoot/Kconfig b/payloads/external/LinuxBoot/Kconfig
+index 4feb98b9db..9717ff7633 100644
+--- a/payloads/external/LinuxBoot/Kconfig
++++ b/payloads/external/LinuxBoot/Kconfig
+@@ -15,7 +15,7 @@ config LINUXBOOT_X86_64
+ 
+ config LINUXBOOT_X86
+ 	bool "x86"
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  X86 kernel and initramfs
+ 
+diff --git a/payloads/external/SeaBIOS/Kconfig.name b/payloads/external/SeaBIOS/Kconfig.name
+index d452b387cf..ed642adf63 100644
+--- a/payloads/external/SeaBIOS/Kconfig.name
++++ b/payloads/external/SeaBIOS/Kconfig.name
+@@ -1,6 +1,6 @@
+ config PAYLOAD_SEABIOS
+ 	bool "SeaBIOS"
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	select PAYLOAD_BUILD_SEABIOS
+ 	help
+ 	  Select this option if you want to build a coreboot image
+diff --git a/payloads/external/U-Boot/Kconfig.name b/payloads/external/U-Boot/Kconfig.name
+index fbef16e6b6..d51681121e 100644
+--- a/payloads/external/U-Boot/Kconfig.name
++++ b/payloads/external/U-Boot/Kconfig.name
+@@ -1,6 +1,6 @@
+ config PAYLOAD_UBOOT
+ 	bool "U-Boot (Experimental)"
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  Select this option if you want to build a coreboot image
+ 	  with a U-Boot payload.
+diff --git a/payloads/external/edk2/Kconfig.name b/payloads/external/edk2/Kconfig.name
+index 4afa551409..c8d89238f6 100644
+--- a/payloads/external/edk2/Kconfig.name
++++ b/payloads/external/edk2/Kconfig.name
+@@ -1,6 +1,6 @@
+ config PAYLOAD_EDK2
+ 	bool "edk2 payload"
+-	depends on ARCH_X86 || ARCH_ARM64
++	depends on ARCH_X86 || ARCH_486 || ARCH_ARM64
+ 	help
+ 	  Select this option if you want to build a coreboot image
+ 	  with a edk2 payload. If you don't know what this is
+diff --git a/payloads/external/iPXE/Kconfig b/payloads/external/iPXE/Kconfig
+index 645d41b55b..54cadf09fa 100644
+--- a/payloads/external/iPXE/Kconfig
++++ b/payloads/external/iPXE/Kconfig
+@@ -3,7 +3,7 @@
+ config PXE
+ 	prompt "Add a PXE ROM"
+ 	def_bool n
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 
+ if PXE
+ menu "PXE Options"
+diff --git a/payloads/external/linux/Kconfig.name b/payloads/external/linux/Kconfig.name
+index 493eb982ef..ea3707d6da 100644
+--- a/payloads/external/linux/Kconfig.name
++++ b/payloads/external/linux/Kconfig.name
+@@ -1,6 +1,6 @@
+ config PAYLOAD_LINUX
+ 	bool "A Linux payload"
+-	depends on ARCH_X86 || ARCH_ARM || ARCH_RISCV
++	depends on ARCH_X86 || ARCH_486 || ARCH_ARM || ARCH_RISCV
+ 	help
+ 	  Select this option if you have a Linux bzImage which coreboot
+ 	  should run as soon as the basic hardware initialization
+diff --git a/payloads/linuxcheck/Makefile b/payloads/linuxcheck/Makefile
+index 838c90df0c..04e5403299 100644
+--- a/payloads/linuxcheck/Makefile
++++ b/payloads/linuxcheck/Makefile
+@@ -8,6 +8,10 @@ ifeq ($(CONFIG_ARCH_X86),y)
+ TARGETARCH = i386
+ endif
+ 
++ifeq ($(CONFIG_ARCH_486),y)
++TARGETARCH = i486
++endif
++
+ all: linuxcheck.elf
+ 
+ $(LIBPAYLOAD_DIR):
+diff --git a/src/Kconfig b/src/Kconfig
+index 16f788154f..5fb4255a1b 100644
+--- a/src/Kconfig
++++ b/src/Kconfig
+@@ -257,9 +257,15 @@ config INCLUDE_CONFIG_FILE
+ 	    config                         0x8d740    raw          3324
+ 	    (empty)                        0x8e480    null         3610440
+ 
++config INCLUDE_BUILD_INFO
++	bool "Include the coreboot build_info file into the ROM image"
++	# Default value set at the end of the file
++	help
++	  Include the build_info (~100B)
++
+ config COLLECT_TIMESTAMPS
+ 	bool "Create a table of timestamps collected during boot"
+-	default y if ARCH_X86
++	default y if ARCH_X86 || ARCH_486
+ 	help
+ 	  Make coreboot create a table of timer-ID/timer-value pairs to
+ 	  allow measuring time spent at different phases of the boot process.
+@@ -481,7 +487,7 @@ config HAVE_RAMPAYLOAD
+ 
+ config RAMPAYLOAD
+ 	bool "Enable coreboot flow without executing ramstage"
+-	default y if ARCH_X86
++	default y if ARCH_X86 || ARCH_486
+ 	depends on HAVE_RAMPAYLOAD
+ 	help
+ 	  If this option is enabled, coreboot flow will skip ramstage
+@@ -499,7 +505,7 @@ config HAVE_CONFIGURABLE_RAMSTAGE
+ 
+ config CONFIGURABLE_RAMSTAGE
+ 	bool "Enable a configurable ramstage."
+-	default y if ARCH_X86
++	default y if ARCH_X86 || ARCH_486
+ 	depends on HAVE_CONFIGURABLE_RAMSTAGE
+ 	help
+ 	  A configurable ramstage allows you to select which parts of the ramstage
+@@ -668,7 +674,7 @@ config BOOT_DEVICE_SPI_FLASH
+ 
+ config BOOT_DEVICE_MEMORY_MAPPED
+ 	bool
+-	default y if ARCH_X86 && BOOT_DEVICE_SPI_FLASH
++	default y if (ARCH_X86 || ARCH_486) && BOOT_DEVICE_SPI_FLASH
+ 	default n
+ 	help
+ 	  Inform system if SPI is memory-mapped or not.
+@@ -691,7 +697,7 @@ config HEAP_SIZE
+ 
+ config STACK_SIZE
+ 	hex
+-	default 0x2000 if ARCH_X86
++	default 0x2000 if ARCH_X86 || ARCH_486
+ 	default 0x0
+ 
+ config MAX_CPUS
+@@ -712,7 +718,7 @@ config DISABLE_ACPI_HIBERNATE
+ 
+ config RESUME_PATH_SAME_AS_BOOT
+ 	bool
+-	default y if ARCH_X86
++	default y if ARCH_X86 || ARCH_486
+ 	depends on HAVE_ACPI_RESUME
+ 	help
+ 	  This option indicates that when a system resumes it takes the
+@@ -732,7 +738,7 @@ config HAVE_MONOTONIC_TIMER
+ config GENERIC_UDELAY
+ 	bool
+ 	depends on HAVE_MONOTONIC_TIMER
+-	default y if !ARCH_X86
++	default y if !(ARCH_X86 || ARCH_486)
+ 	help
+ 	 The board/chipset uses a generic udelay function utilizing the
+ 	 monotonic timer.
+@@ -746,7 +752,7 @@ config TIMER_QUEUE
+ config COOP_MULTITASKING
+ 	def_bool n
+ 	select TIMER_QUEUE
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  Cooperative multitasking allows callbacks to be multiplexed on the
+ 	  main thread. With this enabled it allows for multiple execution paths
+@@ -845,7 +851,7 @@ config GENERATE_PIRQ_TABLE
+ 	  If unsure, say Y.
+ 
+ config GENERATE_SMBIOS_TABLES
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	bool "Generate SMBIOS tables"
+ 	default y
+ 	help
+@@ -855,7 +861,7 @@ config GENERATE_SMBIOS_TABLES
+ 
+ config SMBIOS_TYPE41_PROVIDED_BY_DEVTREE
+ 	bool
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  If enabled, only generate SMBIOS Type 41 entries for PCI devices in
+ 	  the devicetree for which Type 41 information is provided, e.g. with
+@@ -935,7 +941,7 @@ config GDB_STUB
+ 	depends on DRIVERS_UART
+ 	help
+ 	  If enabled, you will be able to set breakpoints for gdb debugging.
+-	  See src/arch/x86/c_start.S for details.
++	  See src/arch/486/c_start.S for details.
+ 
+ config GDB_WAIT
+ 	bool "Wait for a GDB connection in the ramstage"
+@@ -1354,7 +1360,7 @@ config UNCOMPRESSED_RAMSTAGE
+ 
+ config NO_XIP_EARLY_STAGES
+ 	bool
+-	default n if ARCH_X86
++	default n if ARCH_X86 || ARCH_486
+ 	default y
+ 	help
+ 	  Identify if early stages are eXecute-In-Place(XIP).
+@@ -1386,7 +1392,7 @@ config BOOTBLOCK_CUSTOM
+ 
+ config BOOTBLOCK_IN_CBFS
+ 	bool
+-	default y if ARCH_X86
++	default y if ARCH_X86 || ARCH_486
+ 	help
+ 	  Select this on platforms that have a top aligned bootblock inside cbfs.
+ 
+@@ -1410,6 +1416,9 @@ config COMPRESS_PRERAM_STAGES
+ config INCLUDE_CONFIG_FILE
+ 	default y
+ 
++config INCLUDE_BUILD_INFO
++	default y
++
+ config BOOTSPLASH_FILE
+ 	depends on BOOTSPLASH_IMAGE
+ 	default "bootsplash.jpg"
+diff --git a/src/console/Kconfig b/src/console/Kconfig
+index 721cc60e2b..e858561350 100644
+--- a/src/console/Kconfig
++++ b/src/console/Kconfig
+@@ -171,7 +171,7 @@ endif # CONSOLE_SERIAL
+ config SPKMODEM
+ 	bool "spkmodem (console on speaker) console output"
+ 	default n
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  Send coreboot debug output through speaker
+ 
+diff --git a/src/cpu/Kconfig b/src/cpu/Kconfig
+index 297b1a125e..cdd25251e7 100644
+--- a/src/cpu/Kconfig
++++ b/src/cpu/Kconfig
+@@ -4,7 +4,7 @@
+ 
+ source "src/cpu/*/Kconfig"
+ 
+-if ARCH_X86
++if ARCH_X86 || ARCH_486
+ 
+ config DCACHE_RAM_BASE
+ 	hex
+@@ -48,7 +48,7 @@ config SSE2
+ 	  streaming SIMD instructions. Some parts of coreboot can be built
+ 	  with more efficient code if SSE2 instructions are available.
+ 
+-endif # ARCH_X86
++endif # ARCH_X86 || ARCH_486
+ 
+ config SUPPORT_CPU_UCODE_IN_CBFS
+ 	bool
+diff --git a/src/cpu/Makefile.inc b/src/cpu/Makefile.inc
+index 12c682d43d..bd0f4d6ac0 100644
+--- a/src/cpu/Makefile.inc
++++ b/src/cpu/Makefile.inc
+@@ -5,7 +5,15 @@ subdirs-y += amd
+ subdirs-y += armltd
+ subdirs-y += intel
+ subdirs-y += ti
++
++ifeq ($(CONFIG_CPU_486),y)
++#for 4dps and pb4
++subdirs-$(CONFIG_CPU_486) += 486
++else
++#cannot be included if 486
+ subdirs-$(CONFIG_ARCH_X86) += x86
++endif
++
+ subdirs-$(CONFIG_CPU_QEMU_X86) += qemu-x86
+ subdirs-$(CONFIG_CPU_POWER9) += power9
+ 
+diff --git a/src/device/Kconfig b/src/device/Kconfig
+index d79634ffec..01984dc153 100644
+--- a/src/device/Kconfig
++++ b/src/device/Kconfig
+@@ -94,7 +94,7 @@ config MAINBOARD_USE_LIBGFXINIT
+ # TODO: Explain differences (if any) for onboard cards.
+ config VGA_ROM_RUN
+ 	bool "Run VGA Option ROMs"
+-	depends on PCI && (ARCH_X86 || ARCH_PPC64) && !MAINBOARD_FORCE_NATIVE_VGA_INIT
++	depends on PCI && (ARCH_X86 || ARCH_486 || ARCH_PPC64) && !MAINBOARD_FORCE_NATIVE_VGA_INIT
+ 	select HAVE_VGA_TEXT_FRAMEBUFFER
+ 	help
+ 	  Execute VGA Option ROMs in coreboot if found. This can be used
+@@ -219,14 +219,14 @@ config ON_DEVICE_ROM_LOAD
+ 
+ choice
+ 	prompt "Option ROM execution type"
+-	default PCI_OPTION_ROM_RUN_YABEL if !ARCH_X86
+-	default PCI_OPTION_ROM_RUN_REALMODE if ARCH_X86
++	default PCI_OPTION_ROM_RUN_YABEL if !(ARCH_X86 || ARCH_486)
++	default PCI_OPTION_ROM_RUN_REALMODE if ARCH_X86 || ARCH_486
+ 	depends on VGA_ROM_RUN
+ 
+ config PCI_OPTION_ROM_RUN_REALMODE
+ 	prompt "Native mode"
+ 	bool
+-	depends on ARCH_X86 && !ARCH_RAMSTAGE_X86_64
++	depends on (ARCH_X86 || ARCH_486) && !ARCH_RAMSTAGE_X86_64
+ 	help
+ 	  If you select this option, PCI Option ROMs will be executed
+ 	  natively on the CPU in real mode. No CPU emulation is involved,
+@@ -283,7 +283,7 @@ config YABEL_VIRTMEM_LOCATION
+ config YABEL_DIRECTHW
+ 	prompt "Direct hardware access"
+ 	bool
+-	depends on PCI_OPTION_ROM_RUN_YABEL && ARCH_X86
++	depends on PCI_OPTION_ROM_RUN_YABEL && (ARCH_X86 || ARCH_486)
+ 	help
+ 	  YABEL consists of two parts: It uses x86emu for the CPU emulation and
+ 	  additionally provides a PC system emulation that filters bad device
+@@ -837,7 +837,7 @@ config SUBSYSTEM_DEVICE_ID
+ 
+ config VGA_BIOS
+ 	bool "Add a VGA BIOS image"
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	select VGA_ROM_RUN_DEFAULT
+ 	help
+ 	  Select this option if you have a VGA BIOS image that you would
+@@ -871,7 +871,7 @@ config VGA_BIOS_ID
+ 
+ config VGA_BIOS_SECOND
+ 	bool "Add a 2nd video BIOS image"
+-	depends on ARCH_X86 && VGA_BIOS
++	depends on (ARCH_X86 || ARCH_486) && VGA_BIOS
+ 	help
+ 	  Select this option if you have a 2nd video BIOS image that you would
+ 	  like to add to your ROM.
+diff --git a/src/drivers/i2c/tpm/Kconfig b/src/drivers/i2c/tpm/Kconfig
+index 0e7856d645..0f0acdef49 100644
+--- a/src/drivers/i2c/tpm/Kconfig
++++ b/src/drivers/i2c/tpm/Kconfig
+@@ -21,7 +21,7 @@ config DRIVER_TPM_I2C_ADDR
+ 
+ config DRIVER_I2C_TPM_ACPI
+ 	bool "Generate I2C TPM ACPI device" if I2C_TPM
+-	default y if ARCH_X86 && I2C_TPM
++	default y if (ARCH_X86 || ARCH_486) && I2C_TPM
+ 	default n
+ 
+ config DRIVER_TPM_DISPLAY_TIS_BYTES
+diff --git a/src/drivers/pc80/pc/Makefile.inc b/src/drivers/pc80/pc/Makefile.inc
+index 63ed998f8a..37b05a1e9a 100644
+--- a/src/drivers/pc80/pc/Makefile.inc
++++ b/src/drivers/pc80/pc/Makefile.inc
+@@ -1,4 +1,10 @@
+-ifeq ($(CONFIG_ARCH_X86),y)
++ifeq ($(CONFIG_ARCH_486),y)
++ANY86:=y
++else ifeq ($(CONFIG_ARCH_X86),y)
++ANY86:=y
++endif
++
++ifeq ($(ANY86),y)
+ 
+ ramstage-y += isa-dma.c
+ ramstage-y += i8259.c
+diff --git a/src/drivers/pc80/rtc/Kconfig b/src/drivers/pc80/rtc/Kconfig
+index 0d064571e6..a4b5ecbd21 100644
+--- a/src/drivers/pc80/rtc/Kconfig
++++ b/src/drivers/pc80/rtc/Kconfig
+@@ -1,6 +1,6 @@
+ config DRIVERS_MC146818
+ 	bool
+-	default y if ARCH_X86
++	default y if ARCH_X86 || ARCH_486
+ 	depends on PC80_SYSTEM
+ 
+ config USE_PC_CMOS_ALTCENTURY
+diff --git a/src/drivers/pc80/rtc/Makefile.inc b/src/drivers/pc80/rtc/Makefile.inc
+index 5f6055e872..f4e75dfa62 100644
+--- a/src/drivers/pc80/rtc/Makefile.inc
++++ b/src/drivers/pc80/rtc/Makefile.inc
+@@ -1,4 +1,10 @@
+-ifeq ($(CONFIG_ARCH_X86),y)
++ifeq ($(CONFIG_ARCH_486),y)
++ANY86:=y
++else ifeq ($(CONFIG_ARCH_X86),y)
++ANY86:=y
++endif
++
++ifeq ($(ANY86),y)
+ 
+ all-$(CONFIG_DRIVERS_MC146818)	+= mc146818rtc_boot.c
+ 
+diff --git a/src/drivers/pc80/vga/Makefile.inc b/src/drivers/pc80/vga/Makefile.inc
+index f7ec2b5025..8c4da3294b 100644
+--- a/src/drivers/pc80/vga/Makefile.inc
++++ b/src/drivers/pc80/vga/Makefile.inc
+@@ -1,4 +1,10 @@
+-ifeq ($(CONFIG_ARCH_X86),y)
++ifeq ($(CONFIG_ARCH_486),y)
++ANY86:=y
++else ifeq ($(CONFIG_ARCH_X86),y)
++ANY86:=y
++endif
++
++ifeq ($(ANY86),y)
+ 
+ romstage-$(CONFIG_ROMSTAGE_VGA) += vga_io.c
+ romstage-$(CONFIG_ROMSTAGE_VGA) += vga_palette.c
+diff --git a/src/drivers/spi/Kconfig b/src/drivers/spi/Kconfig
+index b7650dd31d..370fd27a72 100644
+--- a/src/drivers/spi/Kconfig
++++ b/src/drivers/spi/Kconfig
+@@ -3,7 +3,7 @@
+ config COMMON_CBFS_SPI_WRAPPER
+ 	bool
+ 	default n
+-	depends on !ARCH_X86
++	depends on !(ARCH_X86 || ARCH_486)
+ 	depends on BOOT_DEVICE_SPI_FLASH
+ 	select BOOT_DEVICE_SUPPORTS_WRITES
+ 	help
+diff --git a/src/drivers/uart/Kconfig b/src/drivers/uart/Kconfig
+index 097c144494..fdb4071220 100644
+--- a/src/drivers/uart/Kconfig
++++ b/src/drivers/uart/Kconfig
+@@ -5,7 +5,7 @@ config DRIVERS_UART_8250IO
+ 	# FIXME: Shouldn't have a prompt, should default to n, and
+ 	#        should be selected by boards that have it instead.
+ 	bool "Serial port on SuperIO"
+-	depends on ARCH_X86 || ARCH_PPC64
++	depends on ARCH_X86 || ARCH_PPC64 || ARCH_486
+ 	default n if DRIVERS_UART_8250MEM || HAVE_UART_SPECIAL
+ 	default n if NO_UART_ON_SUPERIO
+ 	default y
+diff --git a/src/security/memory/Kconfig b/src/security/memory/Kconfig
+index d3dec043df..0886d1b8df 100644
+--- a/src/security/memory/Kconfig
++++ b/src/security/memory/Kconfig
+@@ -5,7 +5,7 @@ menu "Memory initialization"
+ config PLATFORM_HAS_DRAM_CLEAR
+ 	bool
+ 	default y
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  Selected by platforms that support clearing all DRAM
+ 	  after DRAM initialization.
+diff --git a/src/security/memory/memory_clear.c b/src/security/memory/memory_clear.c
+index 03c6f8bd75..c2e894cd13 100644
+--- a/src/security/memory/memory_clear.c
++++ b/src/security/memory/memory_clear.c
+@@ -1,6 +1,6 @@
+ /* SPDX-License-Identifier: GPL-2.0-only */
+ 
+-#if ENV_X86
++#if ENV_X86 && (!(CONFIG_CPU_486))
+ #include <cpu/x86/pae.h>
+ #else
+ #define memset_pae(a, b, c, d, e) 0
+diff --git a/src/security/tpm/tss/vendor/cr50/Kconfig b/src/security/tpm/tss/vendor/cr50/Kconfig
+index 6aa1b10550..52a46c2fdd 100644
+--- a/src/security/tpm/tss/vendor/cr50/Kconfig
++++ b/src/security/tpm/tss/vendor/cr50/Kconfig
+@@ -19,7 +19,7 @@ config TPM_GOOGLE_IMMEDIATELY_COMMIT_FW_SECDATA
+ 
+ config POWER_OFF_ON_CR50_UPDATE
+ 	bool
+-	default y if ARCH_X86
++	default y if ARCH_X86 || ARCH_486
+ 	help
+ 	  Power off machine while waiting for CR50 update to take effect.
+ 
+diff --git a/src/security/vboot/Kconfig b/src/security/vboot/Kconfig
+index a9981874cc..4b7cee7bf8 100644
+--- a/src/security/vboot/Kconfig
++++ b/src/security/vboot/Kconfig
+@@ -286,7 +286,7 @@ config VBOOT_EC_EFS
+ config VBOOT_X86_SHA256_ACCELERATION
+ 	bool "Use sha extension for sha256 hash calculation"
+ 	default n
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	help
+ 	  Use sha256msg1, sha256msg2, sha256rnds2 instruction to accelerate
+ 	  SHA hash calculation in vboot.
+diff --git a/src/vendorcode/amd/pi/Makefile.inc b/src/vendorcode/amd/pi/Makefile.inc
+index e62abab9cd..1b8fa09a98 100644
+--- a/src/vendorcode/amd/pi/Makefile.inc
++++ b/src/vendorcode/amd/pi/Makefile.inc
+@@ -82,7 +82,7 @@ AGESA_INC += -I$(AGESA_ROOT)/Proc/Fch/Common
+ AGESA_INC += -I$(src)/northbridge/amd/pi
+ AGESA_INC += -I$(src)/southbridge/amd/pi/hudson
+ 
+-AGESA_INC += -I$(src)/arch/x86/include
++AGESA_INC += -I$(src)/arch/486/include
+ AGESA_INC += -I$(src)/include
+ AGESA_INC += -I$(src)/commonlib/include
+ AGESA_INC += -I$(src)/commonlib/bsd/include
+diff --git a/tests/Makefile.common b/tests/Makefile.common
+index e51d2530a2..d383432c06 100644
+--- a/tests/Makefile.common
++++ b/tests/Makefile.common
+@@ -35,7 +35,7 @@ TEST_INCLUDES := -include $(src)/include/kconfig.h \
+ TEST_INCLUDES += -I$(testsrc)/include/mocks -I$(testsrc)/include
+ 
+ TEST_INCLUDES += -I$(src) -I$(src)/include -I$(src)/commonlib/include \
+-	-I$(src)/commonlib/bsd/include -I$(src)/arch/x86/include \
++	-I$(src)/commonlib/bsd/include -I$(src)/arch/486/include \
+ 	-I$(top)/3rdparty/vboot/firmware/include
+ 
+ # Path for Kconfig autoheader
+diff --git a/tests/lib/Makefile.inc b/tests/lib/Makefile.inc
+index 9a624767ca..de2e864c6d 100644
+--- a/tests/lib/Makefile.inc
++++ b/tests/lib/Makefile.inc
+@@ -230,7 +230,7 @@ cbfs-lookup-no-mcache-test-mocks += cbfs_get_boot_device \
+ 					cbfs_mcache_lookup \
+ 					mem_pool_alloc \
+ 					mem_pool_free
+-cbfs-lookup-no-mcache-test-config += CONFIG_ARCH_X86=0 \
++cbfs-lookup-no-mcache-test-config += CONFIG_ARCH_486=0 \
+ 				CONFIG_COLLECT_TIMESTAMPS=0 \
+ 				CONFIG_NO_CBFS_MCACHE=1
+ 
+diff --git a/toolchain.inc b/toolchain.inc
+index 47c5fe9b85..031fc2884f 100644
+--- a/toolchain.inc
++++ b/toolchain.inc
+@@ -51,7 +51,8 @@ COREBOOT_STANDARD_STAGES := decompressor bootblock verstage romstage ramstage
+ MAP-decompressor := bootblock
+ 
+ ARCHDIR-i386	:= x86
+-ARCHDIR-x86_32	:= x86
++ARCHDIR-i486	:= 486
++ARCHDIR-x86_32	:= 486
+ ARCHDIR-x86_64	:= x86
+ ARCHDIR-arm	:= arm
+ ARCHDIR-arm64	:= arm64
+diff --git a/util/inteltool/Makefile b/util/inteltool/Makefile
+index e6e122bc45..61b95424e2 100644
+--- a/util/inteltool/Makefile
++++ b/util/inteltool/Makefile
+@@ -12,7 +12,7 @@ LDFLAGS += -lpci -lz
+ 
+ CPPFLAGS += -I$(top)/util/inteltool
+ CPPFLAGS += -I$(top)/src/commonlib/include -I$(top)/src/commonlib/bsd/include
+-CPPFLAGS += -I$(top)/src/arch/x86/include
++CPPFLAGS += -I$(top)/src/arch/486/include
+ 
+ 
+ OBJS = inteltool.o pcr.o cpu.o gpio.o gpio_groups.o rootcmplx.o powermgt.o \
+diff --git a/util/release/genrelnotes b/util/release/genrelnotes
+index 1bbe55429d..4bb7f59c85 100755
+--- a/util/release/genrelnotes
++++ b/util/release/genrelnotes
+@@ -434,7 +434,7 @@ get_log_dedupe "X86 AMD" \
+ 	"agesa\|binarypi\|binary.pi"
+ 
+ get_log_dedupe "X86 common" \
+-	"src/arch/x86 src/cpu/x86 src/include/x86 src/include/pc80"
++	"src/arch/486 src/cpu/486 src/include/486 src/include/pc80"
+ 
+ get_log_dedupe "ARM" \
+ 	"$(for codedir in $(grep -rl "_ARM" --include=Kconfig | \
+diff --git a/util/uio_usbdebug/Makefile b/util/uio_usbdebug/Makefile
+index af1cc8e1ec..57b5caf68d 100644
+--- a/util/uio_usbdebug/Makefile
++++ b/util/uio_usbdebug/Makefile
+@@ -4,6 +4,7 @@ include ../../.config
+ 
+ ARCHDIR-$(CONFIG_ARCH_ARMV7)	:= armv7
+ ARCHDIR-$(CONFIG_ARCH_X86)	:= x86
++ARCHDIR-$(CONFIG_ARCH_486)	:= 486
+ 
+ # Only Intel chipsets supported, currently.
+ OBJ-$(CONFIG_SOUTHBRIDGE_INTEL_COMMON)	+= uio_usbdebug_intel.o
+diff --git a/util/vgabios/include/config.h b/util/vgabios/include/config.h
+index 60a5af9685..068c9964b8 100644
+--- a/util/vgabios/include/config.h
++++ b/util/vgabios/include/config.h
+@@ -18,5 +18,5 @@
+ #define CONFIG_X86EMU_DEBUG_MEM 0
+ #define CONFIG_X86EMU_DEBUG_IO 0
+ 
+-#define CONFIG_ARCH_X86 1
++#define CONFIG_ARCH_486 1
+ #define CONFIG_ARCH_ARM 0
+diff --git a/util/xcompile/xcompile b/util/xcompile/xcompile
+index 7fba665121..6a19bdb8df 100755
+--- a/util/xcompile/xcompile
++++ b/util/xcompile/xcompile
+@@ -286,12 +286,16 @@ fi
+ if [ "${TARCH}" = "x86_32" ]; then
+ cat <<EOF
+ 
+-ifneq (\$(CONFIG_USE_MARCH_586)\$(CONFIG_LP_USE_MARCH_586),)
++
++ifneq (\$(CONFIG_ARCH_486)\$(CONFIG_LP_ARCH_486),)
++	CFLAGS_${TARCH} += -march=i486 -mtune=i486 
++else ifneq (\$(CONFIG_ARCH_586)\$(CONFIG_LP_ARCH_586),)
+ 	CFLAGS_${TARCH} += -march=i586
+ else
+ 	CFLAGS_${TARCH} += -march=i686
+ endif
+ EOF
++
+ fi
+ 
+ cat <<EOF
+-- 
+2.46.1
+

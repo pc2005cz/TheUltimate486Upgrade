@@ -1,0 +1,2091 @@
+From 5e25752b1033930abbc71c69650c513a5419f9ed Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:03:20 +0200
+Subject: [PATCH 13/26] Add FinALI chipset
+
+---
+ src/device/device.c                       |  23 +
+ src/northbridge/ali/m1489/Kconfig         |  16 +
+ src/northbridge/ali/m1489/Makefile.inc    |  20 +
+ src/northbridge/ali/m1489/bootblock.c     | 216 +++++++
+ src/northbridge/ali/m1489/ide.c           | 318 ++++++++++
+ src/northbridge/ali/m1489/ide.h           |   6 +
+ src/northbridge/ali/m1489/memmap.c        |  33 ++
+ src/northbridge/ali/m1489/northbridge.c   | 319 ++++++++++
+ src/northbridge/ali/m1489/postcar.c       |  12 +
+ src/northbridge/ali/m1489/raminit.c       | 676 ++++++++++++++++++++++
+ src/northbridge/ali/m1489/ramstage_exit.c |  78 +++
+ src/northbridge/ali/m1489/regs.h          | 112 ++++
+ src/northbridge/ali/m1489/romstage.c      |  87 +++
+ src/southbridge/ali/m1487/regs.h          |  41 ++
+ 14 files changed, 1957 insertions(+)
+ create mode 100644 src/northbridge/ali/m1489/Kconfig
+ create mode 100644 src/northbridge/ali/m1489/Makefile.inc
+ create mode 100644 src/northbridge/ali/m1489/bootblock.c
+ create mode 100644 src/northbridge/ali/m1489/ide.c
+ create mode 100644 src/northbridge/ali/m1489/ide.h
+ create mode 100644 src/northbridge/ali/m1489/memmap.c
+ create mode 100644 src/northbridge/ali/m1489/northbridge.c
+ create mode 100644 src/northbridge/ali/m1489/postcar.c
+ create mode 100644 src/northbridge/ali/m1489/raminit.c
+ create mode 100644 src/northbridge/ali/m1489/ramstage_exit.c
+ create mode 100644 src/northbridge/ali/m1489/regs.h
+ create mode 100644 src/northbridge/ali/m1489/romstage.c
+ create mode 100644 src/southbridge/ali/m1487/regs.h
+
+diff --git a/src/device/device.c b/src/device/device.c
+index ffda588d63..39e8027d17 100644
+--- a/src/device/device.c
++++ b/src/device/device.c
+@@ -14,6 +14,13 @@
+ #include <smp/spinlock.h>
+ #include <timer.h>
+ 
++#include <arch/pci_io_cfg.h>
++
++#if CONFIG(NORTHBRIDGE_ALI_M1489)
++#	include "../../northbridge/ali/m1489/regs.h"
++#elif CONFIG(NORTHBRIDGE_UMC_UM8881)
++#endif
++
+ /** Pointer to the last device */
+ extern struct device *last_dev;
+ /** Linked list of free resources */
+@@ -238,6 +245,22 @@ static void set_vga_bridge_bits(void)
+ 		vga->command |= (PCI_COMMAND_MEMORY | PCI_COMMAND_IO);
+ 		vga_pri = vga;
+ 		bus = vga->bus;
++
++#if CONFIG(NORTHBRIDGE_ALI_M1489)
++		//pc2005
++		printk(BIOS_INFO, "VGA hole on PCI\n");
++		cfg_write(0x20, cfg_read(0x20) | 0xc0);
++		//use shadow for entire C
++		cfg_write(0x13, cfg_read(0x13) | 0xff);
++#endif
++	} else {
++#if CONFIG(NORTHBRIDGE_ALI_M1489)
++		//use ISA cycles
++		printk(BIOS_INFO, "VGA hole on ISA\n");
++		cfg_write(0x20, cfg_read(0x20) & ~0xc0);
++		//C is ISA native
++		cfg_write(0x13, cfg_read(0x13) & ~0xffU);
++#endif
+ 	}
+ 
+ 	/* Now walk up the bridges setting the VGA enable. */
+diff --git a/src/northbridge/ali/m1489/Kconfig b/src/northbridge/ali/m1489/Kconfig
+new file mode 100644
+index 0000000000..c3fad4064b
+--- /dev/null
++++ b/src/northbridge/ali/m1489/Kconfig
+@@ -0,0 +1,16 @@
++# SPDX-License-Identifier: GPL-2.0-only
++
++config NORTHBRIDGE_ALI_M1489
++	bool
++	select NO_ECAM_MMCONF_SUPPORT
++# 	select HAVE_DEBUG_RAM_SETUP
++	select NO_CBFS_MCACHE
++	select NO_DDR5
++	select NO_LPDDR4
++	select NO_DDR4
++	select NO_DDR3
++	select NO_DDR2
++	select NO_SMM
++#	select GENERIC_UDELAY
++	select BOOT_DEVICE_NOT_SPI_FLASH
++
+diff --git a/src/northbridge/ali/m1489/Makefile.inc b/src/northbridge/ali/m1489/Makefile.inc
+new file mode 100644
+index 0000000000..c2f58c1cfe
+--- /dev/null
++++ b/src/northbridge/ali/m1489/Makefile.inc
+@@ -0,0 +1,20 @@
++## SPDX-License-Identifier: GPL-2.0-or-later
++
++ifeq ($(CONFIG_NORTHBRIDGE_ALI_M1489),y)
++
++bootblock-y += bootblock.c
++
++ramstage-y += northbridge.c
++ramstage-y += ide.c
++
++romstage-y += raminit.c
++romstage-y += romstage.c
++# romstage-$(CONFIG_DEBUG_RAM_SETUP) += debug.c
++romstage-y += memmap.c
++
++#enable L1 in chipset
++postcar-y += postcar.c
++
++ramstage-y += ramstage_exit.c
++
++endif
+diff --git a/src/northbridge/ali/m1489/bootblock.c b/src/northbridge/ali/m1489/bootblock.c
+new file mode 100644
+index 0000000000..6ab28e1f03
+--- /dev/null
++++ b/src/northbridge/ali/m1489/bootblock.c
+@@ -0,0 +1,216 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <commonlib/bsd/helpers.h>	//ARRAY_SIZE
++
++
++#include <console/console.h>
++#include <arch/bootblock.h>
++
++#include "regs.h"
++
++
++#include <console/streams.h>	//temp
++
++
++//TODO
++static const struct ali_cfg_entry bootblock_table[] = {
++	{0x3, 0xc5},	//unlock
++
++	{0x10, 0xff},	//disable SIMM
++	{0x11, 0xff},	//disable SIMM
++
++	{0x12, 0x81},	//0: Exxx ROM
++	{0x13, 0xf0},	//C outside RAM shadow, D in RAM shadow
++
++	// {0x14, 0x9f},
++	{0x14, 0x80},	//no shadow (no RAM yet)
++	{0x15, 0x50},	//TODO check point
++
++	//0x16, 0x17 (cache) later
++
++	{0x19, 0x44},
++	{0x1a, 0x5f},
++	{0x1b, 0x45},
++	{0x1c, 0x00},
++
++	// {0x1d, 0x00},	//not documented but 0?
++	{0x1e, 0x08},	//8?? must be kept low???
++	{0x20, 0x2c},
++	{0x21, 0x36},	//5: "1" ROM access at 0xffffffff
++	{0x22, 0x1d},	//bit 1 should be "1" ?
++
++	{0x25, 0x80},	//gp mem
++	{0x26, 0x00},
++	{0x27, 0x00},
++	{0x28, 0x04},
++
++	{0x29, 0x32},
++	{0x2a, 0x45},
++	{0x2b, 0xd7},
++
++	{0x30, 0x10},
++	{0x31, 0x00},
++	{0x32, 0x00},
++	{0x33, 0x00},
++	{0x34, 0x00},
++
++	{0x35, 0x80},
++	{0x36, 0x00},
++	{0x37, 0x00},
++	{0x38, 0x00},
++
++	{0x39, 0x00},
++	{0x3a, 0x00},
++	{0x3b, 0x00},
++	{0x3c, 0x00},
++
++	{0x3d, 0x05},
++	//3e: ??, 3f: 0x70 shadow
++	{0x40, 0x2b},
++	//0x41??
++
++	{0x42, 0x00},
++	{0x43, 0x00},
++
++	{0x44, 0x1f},	//!!
++	{0x45, 0x80},	//system reset asserted
++
++};
++
++
++static void ali_early_init(void)
++{
++	printk(BIOS_DEBUG, "init northbridge ======== \n");
++/*
++	uint32_t esp;
++
++	asm volatile(
++		"movl %%esp, %0\n"
++		: "=r" (esp)
++		:
++		:
++	);
++
++
++	//0x00000f50
++
++	console_tx_byte(esp & 0xff);
++	console_tx_byte((esp>>8) & 0xff);
++	console_tx_byte((esp>>16) & 0xff);
++	console_tx_byte((esp>>24) & 0xff);
++
++	console_tx_byte('$');
++	*/
++
++// uint8_t *mem;
++
++// before is 0, after 0x81, CPU restart will leave regs enabled
++
++// printk(BIOS_DEBUG, "BEF %x\n", cfg_read(0x12));
++//
++// // uint8_t *mem = (uint8_t *)0xfffe0000;
++// uint8_t *mem = (uint8_t *)0x000e0000;
++//
++// for (unsigned idx=0;idx<0x100;idx++) {
++// 	printk(BIOS_DEBUG, "%02x ", mem[idx]);
++// }
++//
++// printk(BIOS_DEBUG, "\n");
++//
++
++	// cfg_write(0x10, 0xff);	//ram disabled
++	// cfg_write(0x11, 0xff);	//ram disabled
++
++#if 0
++	console_tx_byte('>');
++	console_tx_byte('>');
++	console_tx_byte('>');
++	console_tx_byte('>');
++
++	uint8_t *val = 0;
++	for (unsigned idx=0;idx<0x3000;idx++) {
++		console_tx_byte(val[idx]);
++	}
++
++	console_tx_byte('<');
++	console_tx_byte('<');
++	console_tx_byte('<');
++	console_tx_byte('<');
++#endif
++
++	// cfg_unlock();
++
++	// printk(BIOS_DEBUG, "B1\n");
++
++	for (unsigned idx=0;idx<ARRAY_SIZE(bootblock_table);idx++) {
++		// volatile u8 xxx;
++		// printk(BIOS_DEBUG, "C1\n");
++
++		// xxx = bootblock_table[idx].val;
++		// printk(BIOS_DEBUG, "C2%%\n");
++
++		// asm volatile("rdtsc" :::);
++
++#if 0
++		printk(BIOS_DEBUG, " %02x <= %02x\n",
++			bootblock_table[idx].idx, bootblock_table[idx].val
++		);
++#endif
++		// asm volatile("rdtsc" :::);
++
++		// printk(BIOS_DEBUG, "C3\n");
++
++		cfg_write(bootblock_table[idx].idx, bootblock_table[idx].val);
++
++		// printk(BIOS_DEBUG, "C4\n");
++	}
++
++
++	// printk(BIOS_DEBUG, "AFT %x\n", cfg_read(0x12));
++ //
++	// // mem = (uint8_t *)0xfffe0000;
++	// mem = (uint8_t *)0x000e0000;
++ //
++	// for (unsigned idx=0;idx<0x100;idx++) {
++	// 	printk(BIOS_DEBUG, "%02x ", mem[idx]);
++	// }
++ //
++	// printk(BIOS_DEBUG, "\n");
++
++#if 0
++	printk(BIOS_DEBUG, "LOW\n");
++
++	mem = (uint8_t *)0xf0000;
++	// mem = (uint8_t *)0x000e0000;
++
++	for (unsigned idx=0;idx<0x100;idx++) {
++		printk(BIOS_DEBUG, "%02x ", mem[idx]);
++	}
++
++	printk(BIOS_DEBUG, "\n");
++
++
++	printk(BIOS_DEBUG, "HIGH\n");
++
++	mem = (uint8_t *)0xffff0000;
++
++	for (unsigned idx=0;idx<0x100;idx++) {
++		printk(BIOS_DEBUG, "%02x ", mem[idx]);
++	}
++
++	printk(BIOS_DEBUG, "\n");
++#endif
++
++}
++
++
++void bootblock_early_northbridge_init(void)
++{
++	outb(1, 0xcfb);		//use PCI config mechanism 1
++
++	//enable BIOS access
++	ali_early_init();
++
++	// printk(BIOS_DEBUG, "D1\n");
++
++}
+diff --git a/src/northbridge/ali/m1489/ide.c b/src/northbridge/ali/m1489/ide.c
+new file mode 100644
+index 0000000000..8e30e5d082
+--- /dev/null
++++ b/src/northbridge/ali/m1489/ide.c
+@@ -0,0 +1,318 @@
++//page 81
++/*
++ * IDE _0 _1 _2 _3 _4 _5 _6 _7 _8 _9 _a _b _c _d _e _f
++ * 00: 57 03 00 03 03 06 0e 1f ff 41 01 00 02 00 02 00
++ * 10: 02 00 02 ff ff ff ff ff ff ff ff ff ff ff ff ff
++ * 20: ff ff ff ff ff 00 01 01 0e 16 00 06 0e 06 0e 00
++ * 30: 0e 16 0e 16 ff 01 ff ff ff ff ff ff ff ff ff ff
++ */
++
++#include <console/console.h>
++#include <arch/io.h>
++#include <stdbool.h>
++
++#include "ide.h"
++
++#define PORT_ID		0xf4
++#define PORT_INDEX	0xf8
++#define PORT_DATA	0xfc
++
++struct ali_ide_entry {
++	u8 idx;
++	u8 val;
++};
++
++
++static __always_inline
++u8 ide_read(u8 idx)
++{
++	outb(idx, PORT_INDEX);
++	return inb(PORT_DATA);
++}
++
++static __always_inline
++void ide_write(u8 idx, u8 val)
++{
++	outb(idx, PORT_INDEX);
++	outb(val, PORT_DATA);
++}
++
++static __always_inline
++void ide_unlock(void)
++{
++	outb(0x30, PORT_ID);
++}
++
++static __always_inline
++void ide_lock(void)
++{
++	outb(0x00, PORT_ID);
++}
++
++
++#define PIO0_ACTIVE_TIME_16	165
++#define PIO0_ACTIVE_TIME_8	290
++#define PIO0_CYCLE_TIME		600
++
++#define PIO1_ACTIVE_TIME_16	125
++#define PIO1_ACTIVE_TIME_8	290
++#define PIO1_CYCLE_TIME		383
++
++#define PIO2_ACTIVE_TIME_16	100
++#define PIO2_ACTIVE_TIME_8	290
++#define PIO2_CYCLE_TIME		240
++
++#define PIO3_ACTIVE_TIME_16	80
++#define PIO3_ACTIVE_TIME_8	80
++#define PIO3_CYCLE_TIME		180
++
++#define PIO4_ACTIVE_TIME_16	70
++#define PIO4_ACTIVE_TIME_8	70
++#define PIO4_CYCLE_TIME		120
++
++
++#define TIME_RC(bus_mhz, cyc_t)		(((cyc_t)*(bus_mhz)+999)/1000)
++
++#define TIME_RA(bus_mhz, act_t)		(((act_t)*(bus_mhz)+999)/1000)
++#define TIME_WA(bus_mhz, act_t)		(TIME_RA(bus_mhz, act_t) + 8)
++
++#define TIME_RR(bus_mhz, cyc_t, act_t)	(TIME_RC(bus_mhz, cyc_t) - TIME_RA(bus_mhz, act_t))
++#define TIME_WR(bus_mhz, cyc_t, act_t)	(TIME_RR(bus_mhz, cyc_t, act_t) + 8)
++
++
++
++struct ide_timing {
++	u8 byte_active;		//8bit
++	u8 byte_recovery;	//8bit
++	u8 read_active;		//16bit
++	u8 write_active;	//16bit
++	u8 read_recovery;	//16bit
++	u8 write_recovery;	//16bit
++};
++
++
++#define IDE_TIMING(_name_, _bus_mhz_, _act16_, _act8_, _cyc_)	\
++struct ide_timing _name_ = {					\
++	.byte_active = TIME_WA(_bus_mhz_, _act8_),		\
++	.byte_recovery = TIME_WR(_bus_mhz_, _cyc_, _act8_),	\
++	.read_active = TIME_RA(_bus_mhz_, _act16_),		\
++	.write_active = TIME_WA(_bus_mhz_, _act16_),		\
++	.read_recovery = TIME_RR(_bus_mhz_, _cyc_, _act16_),	\
++	.write_recovery = TIME_WR(_bus_mhz_, _cyc_, _act16_),	\
++}
++
++#define IDE_SLOWEST(_name_)	\
++struct ide_timing _name_ = {					\
++	.byte_active = 32,		\
++	.byte_recovery = 32,	\
++	.read_active = 32,		\
++	.write_active = 32,		\
++	.read_recovery = 32,	\
++	.write_recovery = 32,	\
++}
++
++
++
++// static IDE_TIMING(pio0_33mhz, 33, PIO0_ACTIVE_TIME_16, PIO0_ACTIVE_TIME_8, PIO0_CYCLE_TIME);
++// static IDE_TIMING(pio0_33mhz, 33, PIO4_ACTIVE_TIME_16, PIO4_ACTIVE_TIME_8, PIO4_CYCLE_TIME);
++// static IDE_TIMING(pio0_33mhz, 33, PIO3_ACTIVE_TIME_16, PIO3_ACTIVE_TIME_8, PIO3_CYCLE_TIME);
++static IDE_SLOWEST(pio0_33mhz);
++
++//page 81
++static const struct ali_ide_entry ide_table[] = {
++	// {0x01, 0x03},	//enable IDE
++	{0x01, 0x0f},	//enable IDE, data after T2
++
++	// {0x02, 0},
++	// {0x03, 3},
++	// {0x04, 3},
++	// {0x05, 6},
++	// {0x06, 14},
++
++
++	// {0x07, 0x7f},	//from original 0x1f
++	{0x07, 0x80},		//buffer disabled
++
++	//8 readonly
++
++	// {0x09, 0x41},
++	{0x09, 0x43},		//enabled 3F7 and 3F6
++
++	// {0x0a, 0x4f},	//original 0x01, enable cdrom support, all IDE devices
++	// {0x0a, 0x01},	//original 0x01, enable cdrom support, all IDE devices
++	// {0x0a, 0x01},	//original = 0x01
++	// {0x0a, 0x0f},	//original = 0x01
++	{0x0a, 0x00},		//no buffer
++
++	//b/c cha1.0 sector byte count
++	{0x0b, 0},
++	// {0x0c, 2},
++	{0x0c, 0},
++
++	//d/e cha1.1 sector byte count
++	{0x0d, 0},
++	//{0x0e, 2},
++	{0x0e, 0},
++
++	//f/10 cha2.0 sector byte count
++	{0x0f, 0},
++	// {0x10, 2},
++	{0x10, 0},
++
++	//11/12 cha2.1 sector byte count
++	{0x11, 0},
++	// {0x12, 2},
++	{0x12, 0},
++
++	// {0x25, 0},
++	// {0x26, 1},
++	// {0x27, 1},
++	// {0x28, 14},
++	// {0x29, 22},
++	// {0x2a, 0},
++	// {0x2b, 6},
++	// {0x2c, 14},
++	// {0x2d, 6},
++	// {0x2e, 14},
++	// {0x2f, 0},
++	// {0x30, 14},
++	// {0x31, 22},
++	// {0x32, 14},
++	// {0x33, 22},
++
++	//0x34 readonly
++
++
++	{0x34, 0x00},	//decoded
++
++	// {0x35, 0x01},	//also RAID
++	{0x35, 0x41},	//also RAID
++
++	//NOTICE NOTICE NOTICE
++	//0x41 -> reg 0x35 disables secondary IDE
++	//0x01 -> reg 0x35 enables secondary IDE
++
++};
++
++#define IDE_PRIMARY	(true)
++#define IDE_SECONDARY	(false)
++
++#define IDE_MASTER	(true)
++#define IDE_SLAVE	(false)
++
++static __always_inline
++void ide_drive_timing(
++	bool primary_channel,
++	bool master,
++	struct ide_timing * t
++)
++{
++	u8 idx_ra;
++	u8 idx_wa;
++	u8 idx_rr;
++	u8 idx_wr;
++
++	if (primary_channel) {	//channel 1
++		if (master) {
++			idx_ra = 0x03;
++			idx_wa = 0x04;
++			idx_rr = 0x26;
++			idx_wr = 0x27;
++		} else {
++			idx_ra = 0x05;
++			idx_wa = 0x06;
++			idx_rr = 0x28;
++			idx_wr = 0x29;
++		}
++	} else {	//channel 2
++		if (master) {
++			idx_ra = 0x2b;
++			idx_wa = 0x2c;
++			idx_rr = 0x30;
++			idx_wr = 0x31;
++		} else {
++			idx_ra = 0x2d;
++			idx_wa = 0x2e;
++			idx_rr = 0x32;
++			idx_wr = 0x33;
++		}
++	}
++
++	ide_write(idx_ra, t->read_active<32 ? t->read_active:0);
++	ide_write(idx_wa, t->write_active<32 ? t->write_active:0);
++	ide_write(idx_rr, t->read_recovery<32 ? t->read_recovery:0);
++	ide_write(idx_wr, t->write_recovery<32 ? t->write_recovery:0);
++}
++
++
++static __always_inline
++void ide_channel_timing(
++	bool primary_channel,
++	struct ide_timing * t
++)
++{
++	u8 idx_ba;
++	u8 idx_br;
++
++	if (primary_channel) {
++		//channel 1
++		idx_ba = 0x02;
++		idx_br = 0x25;
++	} else {
++		//channel 2
++		idx_ba = 0x2a;
++		idx_br = 0x2f;
++	}
++
++	ide_write(idx_ba, t->byte_active<32 ? t->byte_active:0);
++	ide_write(idx_br, t->byte_recovery<32 ? t->byte_recovery:0);
++}
++
++
++void ali_ide_init(void)
++{
++	printk(BIOS_DEBUG, "enable IDE\n");
++
++
++	ide_unlock();
++
++/*
++	ide_write(0x1, 0x3);	//enable IDE
++
++	ide_write(0x7, 0x7f);
++
++	ide_write(0x9, 0x41);*/
++
++	for (unsigned idx=0;idx<ARRAY_SIZE(ide_table);idx++) {
++		ide_write(ide_table[idx].idx, ide_table[idx].val);
++	}
++
++	ide_drive_timing(IDE_PRIMARY, IDE_MASTER, &pio0_33mhz);
++	ide_drive_timing(IDE_PRIMARY, IDE_SLAVE, &pio0_33mhz);
++	ide_channel_timing(IDE_PRIMARY, &pio0_33mhz);
++
++	ide_drive_timing(IDE_SECONDARY, IDE_MASTER, &pio0_33mhz);
++	ide_drive_timing(IDE_SECONDARY, IDE_SLAVE, &pio0_33mhz);
++	ide_channel_timing(IDE_SECONDARY, &pio0_33mhz);
++
++
++	printk(BIOS_DEBUG, "CFG ");
++	for (unsigned idx=0;idx<16;idx++) {
++		printk(BIOS_DEBUG, "_%01x ", idx);
++	}
++	printk(BIOS_DEBUG, "\n");
++	for (unsigned idx=0;idx<0x100;idx++) {
++		if ((idx % 16) == 0) {
++			printk(BIOS_DEBUG, "%02x: ", idx);
++		}
++		printk(BIOS_DEBUG, "%02x ", ide_read(idx));
++		if ((idx % 16) == 15) {
++			printk(BIOS_DEBUG, "\n");
++		}
++	}
++
++
++
++	//must be locked or wont work
++	ide_lock();
++}
+diff --git a/src/northbridge/ali/m1489/ide.h b/src/northbridge/ali/m1489/ide.h
+new file mode 100644
+index 0000000000..e340906a6c
+--- /dev/null
++++ b/src/northbridge/ali/m1489/ide.h
+@@ -0,0 +1,6 @@
++#ifndef NORTHBRIDGE_ALI_M1489_IDE_H
++#define NORTHBRIDGE_ALI_M1489_IDE_H
++
++void ali_ide_init(void);
++
++#endif /* NORTHBRIDGE_ALI_M1489_IDE_H */
+diff --git a/src/northbridge/ali/m1489/memmap.c b/src/northbridge/ali/m1489/memmap.c
+new file mode 100644
+index 0000000000..5e11f06ac2
+--- /dev/null
++++ b/src/northbridge/ali/m1489/memmap.c
+@@ -0,0 +1,33 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <arch/romstage.h>
++#include <device/pci_ops.h>
++#include <cbmem.h>
++#include <commonlib/helpers.h>
++#include <program_loading.h>
++
++#include "regs.h"
++
++uintptr_t cbmem_top_chipset(void)
++{
++	// return 64*MiB;	//NOTICE debug max
++
++	const u8 bank_size_mb[9] = {1, 4, 2, 16, 64, 8, 16, 8, 4};
++
++	//NOTICE rest of combinations evaluates as 0 (TODO match with controller behavior)
++
++	uintptr_t sum = 0;
++	for (unsigned idx = 0x10; idx<0x12; idx++) {
++		u8 reg = cfg_read(idx);
++
++		if ((reg & 0xf) < 9) {
++			sum += bank_size_mb[reg & 0xf];
++		}
++
++		if (((reg >> 4) & 0xf) < 9) {
++			sum += bank_size_mb[(reg >> 4) & 0xf];
++		}
++	}
++
++	return sum*MiB;
++}
+diff --git a/src/northbridge/ali/m1489/northbridge.c b/src/northbridge/ali/m1489/northbridge.c
+new file mode 100644
+index 0000000000..6cd5fec076
+--- /dev/null
++++ b/src/northbridge/ali/m1489/northbridge.c
+@@ -0,0 +1,319 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <cpu/486/sp_init.h>
++#include <console/console.h>
++#include <device/pci_ops.h>
++#include <device/device.h>
++#include <device/pci.h>
++#include <device/pci_ids.h>
++#include <stdint.h>
++#include <string.h>
++
++#include <cbmem.h>
++
++#include "regs.h"
++#include "ide.h"
++
++static void northbridge_init(struct device *dev)
++{
++	printk(BIOS_SPEW, "Northbridge Init\n");
++}
++
++static struct device_operations northbridge_operations = {
++	.read_resources   = pci_dev_read_resources,
++	.set_resources    = pci_dev_set_resources,
++	.enable_resources = pci_dev_enable_resources,
++	.init	     = northbridge_init,
++};
++
++static const struct pci_driver northbridge_driver __pci_driver = {
++	.ops = &northbridge_operations,
++	.vendor = PCI_VID_AL,
++	.device = PCI_DID_AL_M1489,
++};
++
++
++/* Report the regions. */
++
++static void ali_domain_read_resources(struct device *dev)
++{
++	pci_domain_read_resources(dev);
++	int idx = 2;
++
++	//ISA IO disable from PCI? (VGA IO should be special)
++	fixed_io_from_to_flags(
++		dev,
++		idx++,
++		0,
++		0x1000,
++		IORESOURCE_RESERVE
++	);
++
++
++	//low mem
++	ram_from_to(dev, idx++, 0, 0xa0000ULL);	//0xa0000
++
++#if 1
++	//VGA
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		0xa0000ULL,
++		0xc0000ULL,
++		IORESOURCE_FIXED | IORESOURCE_STORED | IORESOURCE_ASSIGNED
++	);
++
++	//BIOSes
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		0xc0000ULL,
++		0x100000ULL,
++		IORESOURCE_FIXED | IORESOURCE_STORED | IORESOURCE_ASSIGNED
++	);
++#endif
++
++	//after bios to end of the RAM
++	ram_from_to(dev, idx++, 0x100000ULL, (unsigned long)cbmem_top());
++
++
++	printk(BIOS_INFO, "CBMEM TOP !!! 0x%p\n", cbmem_top());
++
++#if 1
++	//possible PCI area, end of the RAM to end of the wire
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		(unsigned long)cbmem_top(),
++		0x08000000ULL,
++		IORESOURCE_RESERVE
++	);
++#endif
++
++#if 1
++	//not wired area in ALI, DO NOT USE!
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		0x08000000ULL,
++		0xf8000000ULL,
++		IORESOURCE_FIXED | IORESOURCE_STORED | IORESOURCE_ASSIGNED
++	);
++#endif
++	//TODO test if from 0xff000000 or 0xffff0000
++
++#if 0
++	//PCI area to BOOT segment
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		0xf8000000ULL,
++		0xffff0000ULL,
++		IORESOURCE_RESERVE | IORESOURCE_PREFETCH
++	);
++
++#endif
++
++#if 1
++	//BOOT segment
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		0xffff0000ULL,
++		0x100000000ULL,
++		IORESOURCE_FIXED | IORESOURCE_STORED | IORESOURCE_ASSIGNED
++	);
++#endif
++}
++
++
++static void ide_init(struct device *dev)
++{
++	ali_ide_init();
++}
++
++
++
++struct device_operations pci_domain_ops = {
++	// .read_resources		= pci_domain_read_resources,
++	.read_resources		= ali_domain_read_resources,
++	.set_resources		= pci_domain_set_resources,
++	.scan_bus		= pci_domain_scan_bus,
++
++	.init		   = ide_init,
++};
++
++
++#if 0
++
++static void memdump(void)
++{
++
++	uint8_t *mem;
++
++	mem = (uint8_t *)0x000e0000;
++	printk(BIOS_DEBUG, "%p: %02x %02x %02x +++++ \n",
++		mem,
++		cfg_read(0x12),
++		cfg_read(0x14),
++		cfg_read(0x21)
++	);
++	for (unsigned idx=0;idx<128;idx++) {
++		printk(BIOS_DEBUG, "%02x ", mem[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++
++	mem = (uint8_t *)0x000f0000;
++	printk(BIOS_DEBUG, "%p:\n", mem);
++	for (unsigned idx=0;idx<128;idx++) {
++		printk(BIOS_DEBUG, "%02x ", mem[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++
++	mem = (uint8_t *)0xffff0000;
++	printk(BIOS_DEBUG, "%p:\n", mem);
++	for (unsigned idx=0;idx<128;idx++) {
++		printk(BIOS_DEBUG, "%02x ", mem[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++}
++
++#endif
++
++void mp_init_cpus(struct bus *cpu_bus)
++{
++	// const struct mp_ops *ops = &mp_ops_no_smm;
++
++	//NO SMM pc2005
++	// sp_init_with_smm(cpu_bus, ops);
++
++#if 0
++	void* current_address;
++
++	// asm volatile("rdtsc" :::);
++	asm volatile(
++		"call get_eip\n\t"
++		"get_eip:\n\t"
++		"pop %%eax\n\t"
++		"movl %%eax, %0\n\t"
++		: "=r" (current_address)::"%eax"
++	);
++	printk(BIOS_INFO, "***INIT CPU EIP:%p\n", current_address);
++#endif
++
++	//ramstage disable original ROM, do shadow
++	cfg_unlock();
++
++	//TODO TODO TODO TODO TODO TODO test RAM/ROM/ISA on E/F segments
++
++
++
++	DIS_SEGMENT_E;	//disable ROME, so we can have shadowE
++	EN_SHADOW_EF;	//enable shadow E/F
++	EN_ROM_A31;	//enable BOOT ... now we can switch between E and F there
++
++
++	printk(BIOS_INFO, "set shadow E to copy into\n");
++
++	EN_SWAP_EF;	//map ROME to FFFF/BOOT
++
++	//copy ROME to shadowE
++	memcpy((void*)0xe0000, (void*)0xffff0000, 0x10000);
++
++
++	printk(BIOS_INFO, "shadow F\n");
++
++	DIS_SWAP_EF;	//map ROMF to FFFF/BOOT
++
++	//copy ROMF to shadowF
++	memcpy((void*)0xf0000, (void*)0xffff0000, 0x10000);
++
++
++	#if 0
++
++	cfg_write(0x2b, cfg_read(0x2b) | 0x20);	//swap access
++
++	EN_SEGMENT_E;
++	EN_SHADOW_EF;
++	EN_ROM_A31;
++	memdump();
++	//E: empty, F: ff ff 68 81 16 (RAM?), BOOT: 5f 5f 46 4d 41 romE
++
++	EN_SEGMENT_E;
++	EN_SHADOW_EF;
++	DIS_ROM_A31;
++	memdump();
++	//E: empty, F: ff ff 68 81 16 (RAM?), BOOT: empty
++
++	EN_SEGMENT_E;
++	DIS_SHADOW_EF;
++	EN_ROM_A31;
++	memdump();
++	//E: ROMF  0c 0f 84 cd f2, F: ROME 5f 5f 46 4d 41, BOOT: ROME 5f 5f 46 4d 41
++
++	EN_SEGMENT_E;
++	DIS_SHADOW_EF;
++	DIS_ROM_A31;
++	memdump();
++	//E: ROMF 0c 0f 84 cd f2 ff, F: ROME 5f 5f 46 4d 41 50, BOOT: empty
++
++	//////////
++
++	DIS_SEGMENT_E;
++	EN_SHADOW_EF;
++	EN_ROM_A31;
++	memdump();
++	//E: empty, F: ff ff 68 81 16 (RAM?), BOOT: ROME 5f 5f 46 4d 41 50 5f
++
++	DIS_SEGMENT_E;
++	EN_SHADOW_EF;
++	DIS_ROM_A31;
++	memdump();
++	//E: empty, F: ff ff 68 81 16 (RAMF?), BOOT: empty
++
++	DIS_SEGMENT_E;
++	DIS_SHADOW_EF;
++	EN_ROM_A31;
++	memdump();
++	//E: empty, F: ROME, BOOT: ROME
++
++	DIS_SEGMENT_E;
++	DIS_SHADOW_EF;
++	DIS_ROM_A31;
++	memdump();
++	//E: empty, F: ROME, BOOT: empty
++
++
++	//disable EF, make shadow
++
++	//void *write_tables(void)
++
++	// cfg_write(0x12, cfg_read(0x12) & ~7);		//disable E
++
++	// cfg_write(0x14, 0xbf);	//enable shadow
++#endif
++
++
++}
++
++struct device_operations cpu_bus_ops = {
++	.read_resources   = noop_read_resources,
++	.set_resources    = noop_set_resources,
++	.init	     = mp_cpu_bus_init,
++};
++
++static void enable_dev(struct device *dev)
++{
++	/* Set the operations if it is a special bus type */
++	if (dev->path.type == DEVICE_PATH_DOMAIN) {
++		dev->ops = &pci_domain_ops;
++	}
++	else if (dev->path.type == DEVICE_PATH_CPU_CLUSTER) {
++		dev->ops = &cpu_bus_ops;
++	}
++}
++
++struct chip_operations northbridge_ali_m1489_ops = {
++	CHIP_NAME("ALI M1489 Northbridge (FINALI)")
++	.enable_dev = enable_dev,
++};
+diff --git a/src/northbridge/ali/m1489/postcar.c b/src/northbridge/ali/m1489/postcar.c
+new file mode 100644
+index 0000000000..64d8bd7706
+--- /dev/null
++++ b/src/northbridge/ali/m1489/postcar.c
+@@ -0,0 +1,12 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include "regs.h"
++
++void late_car_teardown(void);
++
++
++void late_car_teardown(void)
++{
++	//enable L1 generation, + writeback (TODO CPU detection)
++	cfg_modify(0x16, 0, 0x1 | 0x4);
++}
+diff --git a/src/northbridge/ali/m1489/raminit.c b/src/northbridge/ali/m1489/raminit.c
+new file mode 100644
+index 0000000000..034fca1041
+--- /dev/null
++++ b/src/northbridge/ali/m1489/raminit.c
+@@ -0,0 +1,676 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include <stdint.h>
++#include <device/mmio.h>
++#include <console/console.h>
++#include <arch/io.h>
++
++#include "regs.h"
++
++void l2_cache_init(void);
++void dram_init(void);
++
++
++//////////////////
++
++//NOTICE could be chance it's stuck at this value, try more than one
++static const u32 test_patterns[] = {
++	0x12345678,
++	0x3355aacc,
++	0xf0f0f0f0,
++	0x0f0f0f0f,
++	0x87654321,
++};
++
++
++static
++bool is_addr_volatile(uintptr_t addr)
++{
++	for (unsigned idx=0;idx<ARRAY_SIZE(test_patterns);idx++) {
++		//write test pattern to requested address
++		write32p(addr, test_patterns[idx]);
++		asm volatile ("" ::: "memory");	//memory barrier
++
++		// printk(BIOS_INFO, "Va %08x\n", read32p(addr));
++		// printk(BIOS_INFO, "Vb %08x\n", read32p(addr));
++		// printk(BIOS_INFO, "Vc %08x\n", read32p(addr));
++		// printk(BIOS_INFO, "Vd %08x\n", read32p(addr));
++		// printk(BIOS_INFO, "Ve %08x\n", read32p(addr));
++		// printk(BIOS_INFO, "Vf %08x\n", read32p(addr));
++
++#if 1
++		read32p(addr);
++		read32p(addr);
++		read32p(addr);
++		read32p(addr);
++		read32p(addr);
++		read32p(addr);
++#endif
++
++		// printk(BIOS_INFO, "VOL %08x\n", read32p(addr));
++
++		/*
++		asm volatile("rdtsc" :::);
++		asm volatile("rdtsc" :::);
++		asm volatile("rdtsc" :::);
++		asm volatile("rdtsc" :::);
++		asm volatile("rdtsc" :::);
++		asm volatile("rdtsc" :::);
++		asm volatile("rdtsc" :::);*/
++
++
++
++		if (read32p(addr) != test_patterns[idx]) {
++			return true;
++		}
++	}
++
++	//all test patterns were stored and read back OK
++	return false;
++}
++
++
++//toggle MSb of address (row or column) and check if aliasing to addres 0
++//destroys content
++static
++bool is_aliasing(
++	uintptr_t addr,
++	u32 test
++)
++{
++	//reset address 0 to ~test
++	write32p(0, ~test);
++	asm volatile ("" ::: "memory");	//memory barrier
++	write32p(addr, test);
++	asm volatile ("" ::: "memory");	//memory barrier
++
++#if 1
++	read32p(0);
++	read32p(0);
++	read32p(0);
++	read32p(0);
++	read32p(addr);
++	read32p(addr);
++	read32p(addr);
++	read32p(addr);
++	#endif
++
++	// printk(BIOS_INFO, "ALIAS1 %08x %08x\n", read32p(0), read32p(addr));
++	// printk(BIOS_INFO, "ALIAS2 %08x %08x\n", read32p(0), read32p(addr));
++	// printk(BIOS_INFO, "ALIAS3 %08x %08x\n", read32p(0), read32p(addr));
++	// printk(BIOS_INFO, "ALIAS4 %08x %08x\n", read32p(0), read32p(addr));
++	// printk(BIOS_INFO, "ALIAS5 %08x %08x\n", read32p(0), read32p(addr));
++	// printk(BIOS_INFO, "ALIAS6 %08x %08x\n", read32p(0), read32p(addr));
++
++	//read from address 0 if aliasing
++	if (read32p(0) == test) {
++		//aliasing
++		// printk(BIOS_INFO, "aliasing %08x\n", read32p(0));
++		return true;
++	} else {
++		//not aliasing
++		// printk(BIOS_INFO, "not aliasing %08x\n", read32p(0));
++		return false;
++	}
++}
++
++
++
++//decode table at p25, we need to detect which MAx lines are ignored by SIMM
++//use 16M config (all MAx are used)
++//iterate from MA11 to MA0 for both cas and ras sizes
++//reset address 0
++//write test word to MA11
++//readback from MA11 = different -> mem failed
++//readback address 0 =
++//	MA11 value -> MA11 is NC (wraps)
++//	reset value -> MA11 is connected
++//	different value -> mem failed
++//... repeat for other MA signal
++
++
++
++struct ma_size {
++	u8 cpu_addr_bit;
++	u8 mem_addr_size;
++};
++
++
++/*
++ * 16M address
++ * columns	rows
++ * 3		14
++ * 4		15
++ * 5		16
++ * 6		17
++ * 7		18
++ * 8		19
++ * 9		20
++ * 10		21
++ * 2		22
++ * 11		23
++ * 12		24
++ * 13		25
++ */
++
++static const struct ma_size row_table[] = {
++	{25,	12},
++	{24,	11},
++	{23,	10},
++	{22,	9},	//if A22=1 aliasing -> error
++};
++
++static const struct ma_size column_table[] = {
++	{13,	12},
++	{12,	11},
++	{11,	10},
++	{2,	9},
++	{10,	8},	//if A10=1 aliasing -> error
++};
++
++
++static
++u8 detect_address_size(const struct ma_size * table, unsigned count)
++{
++	//test if address 0 is non volatile
++	if (is_addr_volatile(0)) {
++		printk(BIOS_NOTICE, "Address 0 is volatile\n");
++		return 0;
++	}
++
++	//detect CAS vector size
++	for (unsigned idx=0;idx<count;idx++) {
++		uintptr_t cpu_addr = 1UL << table[idx].cpu_addr_bit;
++		u8 address_size = table[idx].mem_addr_size;
++
++		// printk(BIOS_INFO, "test %08lx %u\n", cpu_addr, address_size);
++
++		//test if tested address is non volatile
++		if (is_addr_volatile(cpu_addr)) {
++			/*
++			 * address is volatile
++			 * should either alias to nonvolatile address 0 or
++			 * be nonvolatile itself
++			 *
++			 * access outside RAM?
++			 */
++			printk(BIOS_INFO, "Address %08lx is volatile, wrong region?\n",
++			       cpu_addr
++			);
++			return 0;
++		}
++
++		/* can store arbitrary pattern without alias */
++		if (! is_aliasing(cpu_addr, cpu_addr)) {
++			printk(BIOS_INFO, "Address size %u\n", address_size);
++
++			return address_size;
++		}
++	}
++
++	printk(BIOS_WARNING, "Address size cannot be detected\n");
++
++	return 0;
++}
++
++
++//ras_cas
++enum simm_type {
++	NONE	=	0xfU,
++	R09_C09 =	0,
++	R10_C10 =	1,
++	R09_C10 =	2,
++	R11_C11 =	3,
++	R12_C12 =	4,
++	R11_C10 =	5,
++	R12_C10 =	6,
++	R12_C09 =	7,
++	R12_C08 =	8,
++};
++
++
++struct simm_map_type {
++	u8 rows:4;
++	u8 columns:4;
++	enum simm_type type;
++};
++
++
++static const struct simm_map_type map_table[] = {
++	{9, 9,		R09_C09},
++	{10, 10,	R10_C10},
++	{9, 10,		R09_C10},
++	{11, 11,	R11_C11},
++	{12, 12,	R12_C12},
++	{11, 10,	R11_C10},
++	{12, 10,	R12_C10},
++	{12, 9,		R12_C09},
++	{12, 8,		R12_C08},
++};
++
++
++static
++enum simm_type detect_size(void)
++{
++	// printk(BIOS_INFO, "==%02x %02x %02x %02x\n",
++	//	cfg_read(0x10),
++	//	cfg_read(0x11),
++	//	cfg_read(0x16),
++	//	cfg_read(0x17)
++	// );
++
++	//detect CAS vector size
++	u8 columns = detect_address_size(column_table, ARRAY_SIZE(column_table));
++	if (columns == 0) {
++		printk(BIOS_INFO, "Disable bank, no columns\n");
++
++		return NONE;
++	}
++
++	//detect RAS vector size
++	u8 rows = detect_address_size(row_table, ARRAY_SIZE(row_table));
++	if (rows == 0) {
++		printk(BIOS_WARNING, "Disable bank, row size error\n");
++
++		return NONE;
++	}
++
++	for (unsigned idx = 0; idx < ARRAY_SIZE(map_table); idx++) {
++		if (
++			(map_table[idx].rows == rows) &&
++			(map_table[idx].columns == columns)
++		) {
++			printk(BIOS_INFO, "Found %lukiB columns:%u rows:%u\n",
++				4UL << (rows + columns - 10),
++				columns,
++				rows
++			);
++
++			return map_table[idx].type;
++		}
++	}
++
++	//TODO can use nearest smaller capacity
++	printk(BIOS_WARNING, "Disable unsupported: %lukiB columns:%u rows:%u\n",
++		4UL << (rows + columns - 10),
++		columns,
++		rows
++	);
++
++	return NONE;
++}
++
++
++//EDO duck test: if it works like EDO -> it is EDO
++static
++bool detect_edo(void)
++{
++	bool is_edo = false;
++
++	//edo test enable
++	cfg_modify(0x1a, 0, 0x20);
++
++	//TODO other patterns?
++	// write32p(0, 0x55aa33ccUL);
++	// asm volatile ("" ::: "memory");	//memory barrier
++
++#if 0
++	read32p(0);
++	read32p(0);
++	read32p(0);
++	read32p(0);
++	read32p(0);
++	read32p(0);
++	read32p(0);
++#endif
++
++	if (! is_addr_volatile(0)) {
++
++	// if (read32p(0) == 0x55aa33ccUL) {
++		is_edo = true;
++		printk(BIOS_INFO, "EDO\n");
++	} else {
++		printk(BIOS_INFO, "FPM\n");
++	}
++
++	//edo test disable (other banks)
++	cfg_modify(0x1a, 0x20, 0);
++
++	return is_edo;
++}
++
++
++
++///////////////////////
++///////////////////////
++///////////////////////
++
++
++enum l2_chip_size {
++	L2_CHIP_NONE = 0,	//also reserved
++	L2_CHIP_32K = 1,
++	L2_CHIP_64K = 2,
++	L2_CHIP_128K = 3,
++};
++
++
++void l2_cache_init(void)
++{
++	printk(BIOS_INFO, "Detect L2 cache\n");
++
++	printk(BIOS_INFO, "[16]=0x%02x [17]=0x%02x\n",
++	       cfg_read(0x16),
++	       cfg_read(0x17)
++	);
++
++	//L2 force HIT, force NONDIRTY, don't force MISS
++	//disable L1/L2 cacheable shadow
++	//1 bank of cache
++	//max cache size TODO ??
++	cfg_modify(0x17, 4 | 8 | 0xc0 | 3, 0x20 | 0x10 | 3);
++	// cfg_modify(0x17, 4 | 8 | 0xc0 | 3, 0x20 | 0x10 );
++
++	//disable L1 cache, enable L2 cache
++	cfg_modify(0x16, 1, 2);
++
++	//NOTICE one would think, force HIT is even without defined any DRAM :-P
++	//also NOTICE L2 as RAM would need the DRAM faked
++	//also nobody noticed because power-on is with 1MB DRAM enabled :-P
++
++	//set DRAM banks to max (so cache can be filled?)
++	// cfg_write(0x10, (R12_C12 << 4) | R12_C12);
++	// cfg_write(0x11, (R12_C12 << 4) | R12_C12);
++	cfg_write(0x10, (NONE << 4) | R12_C12);
++
++	if (is_addr_volatile(0)) {
++		//no L2 cache
++		printk(BIOS_INFO, "L2 cache not found\n");
++
++		//deconfigure L2 cache
++		cfg_modify(0x17, 4 | 8 | 0x20 | 0x10 | 3, L2_CHIP_NONE);
++
++		//disable L2 cache
++		cfg_modify(0x16, 2, 0);
++
++		return;
++	}
++
++	//set 2 banks
++	cfg_modify(0x17, 0, 4);
++/*
++	if (is_aliasing(4, 0xee7733cc) ) {
++		printk(BIOS_NOTICE, "?? 1 bank\n");
++	} else {
++		printk(BIOS_NOTICE, "?? 2 banks\n");
++	}*/
++
++	// //write pattern to address 0x4
++	// write32p(4, 0xcc3377ee);
++ //
++	// asm volatile ("" ::: "memory");	//barrier??
++
++	printk(BIOS_NOTICE, "444444\n");
++
++	bool has_2_banks = false;
++
++	if (is_addr_volatile(4)) {
++		//1 bank
++		printk(BIOS_NOTICE, "1 bank\n");
++		// cfg_modify(0x17, 4, 0);	//reset to 1 bank
++	} else {
++		//2 banks
++		printk(BIOS_NOTICE, "2 banks\n");
++		//leave registers as it is
++		has_2_banks = true;
++	}
++
++	//NOTICE now we know bank configuration of L2 cache
++
++#if 0
++	//re-test if address 0 is non volatile ()
++	if (is_addr_volatile(0)) {
++		printk(BIOS_NOTICE, "Address 0 is volatile\n");
++		cfg_modify(0x17, 3 | 4 | 8 | 0x20 | 0x10 | 3, L2_CHIP_NONE);
++		return;
++	}
++
++	//TODO test addresses?
++#endif
++
++	//detect size
++
++	enum l2_chip_size chip_size = L2_CHIP_NONE;
++
++	//TODO error states
++
++	//address 19
++	if (! is_aliasing(1UL << 19, 0xcafebabe)) {
++		//found 1MiB L2 cache (8x 128kiB)
++		chip_size = L2_CHIP_128K;
++		// has_2_banks = true;
++	} else if (! is_aliasing(1UL << 18, 0xdeadbeef)) {
++		//NOTICE bug in flowchart?
++		chip_size = L2_CHIP_128K;
++		// has_2_banks = !has_2_banks;
++	} else if (! is_aliasing(1UL << 17, 0xcccccccc)) {
++		//NOTICE bug in flowchart?
++		chip_size = L2_CHIP_64K;
++		// has_2_banks = !has_2_banks;
++	} else if (! is_aliasing(1UL << 16, 0x33333333)) {
++		chip_size = L2_CHIP_32K;
++		// has_2_banks = false;
++	}
++
++	const u8 chip_table[4] = {0, 32, 64, 128};
++
++	if (chip_size != L2_CHIP_NONE) {
++		printk(BIOS_INFO, "%ukiB L2 cache, %u bank(s), %ukiB chips\n",
++			chip_table[chip_size & 3]*4*(has_2_banks?2:1),
++			has_2_banks?2:1,
++			chip_table[chip_size & 3]
++		);
++	} else {
++		printk(BIOS_INFO, "No L2 cache\n");
++	}
++
++	//disable L2 cache
++	cfg_modify(0x16, 2, 0);
++
++	//disable forced modes
++	cfg_modify(0x17, 3 | 4 | 0x8 | 0x10 | 0x20, chip_size | (has_2_banks ? 4:0));
++
++	return;
++}
++
++
++void dram_init(void)
++{
++	//TODO CDEF : ROM vs RAM vs ISA
++
++	printk(BIOS_INFO, "DRAM initialization\n");
++
++	printk(BIOS_INFO, "[16]=0x%02x [17]=0x%02x\n",
++	       cfg_read(0x16),
++	       cfg_read(0x17)
++	);
++
++
++	//reset DRAM banks to "none"
++	cfg_write(0x10, (NONE << 4) | NONE);
++	cfg_write(0x11, (NONE << 4) | NONE);
++
++	//no hidden refresh, no ras timeout, C not in ROM, 15M not ISA
++	cfg_modify(0x12, 0xc0 | 2 | 4 | 8, 0);
++
++	//C, D in RAM
++	cfg_write(0x13, 0xff);
++
++	//E F NOT in RAM, shadow R/W, 2-1-1-1 reliability ???
++	cfg_write(0x14, 0xf0);
++
++	//disable L1 /KEN, disable L2 cache
++	cfg_modify(0x16, 1 | 2, 0);
++
++	//L2 always MISS, disable shadow cacheable L1/L2
++	// cfg_modify(0x17, 0x10 | 0x20 | 0x40 | 0x80, 8);
++	cfg_modify(0x17, 0x10 | 0x20 | 0x40 | 0x80, 0);
++
++	//disable EDO, hidden 15us timing (but is disabled)
++	// cfg_write(0x1a, 0x0);
++	cfg_write(0x1a, 0x40);
++
++	//slow timing, CAS-before-RAS, no parity, biggest CPU time slot (why not)
++	// cfg_write(0x1b, 0xc0);
++	cfg_write(0x1b, 0x00);
++
++	//disable PCI memory hole
++	cfg_modify(0x20, 0xc0, 0);
++
++	//TODO FPU irqs?, system refresh (normal) to 15us? (safest?)
++	cfg_modify(0x2a, 0x60, 0);
++
++	//D region not in ROM
++	cfg_modify(0x44, 0xc0, 0);
++
++	//NOTICE set max addressing size and use address mapping to find unimplemented address wires in DRAM chip (will alias to (u32*)0)
++
++
++
++#if 0
++	printk(BIOS_INFO, "CFG ");
++
++	for (unsigned idx=0;idx<16;idx++) {
++		printk(BIOS_INFO, "_%01x ", idx);
++	}
++
++	printk(BIOS_INFO, "\n");
++
++	for (unsigned idx=0;idx<0x50;idx++) {
++		if ((idx % 16) == 0) {
++			printk(BIOS_INFO, "%02x: ", idx);
++		}
++
++		printk(BIOS_INFO, "%02x ", cfg_read(idx));
++
++		if ((idx % 16) == 15) {
++			printk(BIOS_INFO, "\n");
++		}
++	}
++#endif
++
++	//todo
++	cfg_write(0x1b, 0x45);
++	cfg_write(0x20, 0x8);
++	cfg_write(0x21, 0x32);
++	cfg_write(0x2a, 0x45);
++	cfg_modify(0x12, 0, 0x80);	//hidden
++
++#if 0
++	write32p(0, 0x11111111UL);
++	read32p(0);
++	write32p(0, 0x22222222UL);
++	read32p(0);
++	write32p(0, 0x33333333UL);
++	read32p(0);
++	write32p(0, 0x44444444UL);
++	read32p(0);
++
++	read32p(0);
++	read32p(0);
++#endif
++
++	enum simm_type bank_size[4] = {NONE,NONE,NONE,NONE};
++
++
++	//bank 0
++	printk(BIOS_INFO, "Bank 0:\n");
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++
++	cfg_write(0x10, (NONE << 4) | R12_C12);	//64M addr (R/C = 12/12)
++	// asm volatile("rdtsc" :::);
++
++// cfg_modify(0x1a, 0xf, 0);
++
++
++	bank_size[0] = detect_size();
++	if (bank_size[0] != NONE) {
++		//set EDO for bank
++		cfg_modify(0x1a, 0, 1 << 0);
++		detect_edo();	//NOTICE EDO bit will stay on
++	}
++	// cfg_write(0x10, (NONE << 4) | NONE);
++
++	// cfg_modify(0x1a, 0xf, 0);
++
++	//bank 1
++	printk(BIOS_INFO, "Bank 1:\n");
++	cfg_write(0x10, (R12_C12 << 4) | NONE);	//64M addr (R/C = 12/12)
++	bank_size[1] = detect_size();
++	if (bank_size[1] != NONE) {
++		//set EDO for bank
++		cfg_modify(0x1a, 0, 1 << 1);
++		detect_edo();	//NOTICE EDO bit will stay on
++	}
++	// cfg_write(0x10, (NONE << 4) | NONE);
++
++	// cfg_modify(0x1a, 0xf, 0);
++
++	//other register
++	cfg_write(0x10, (NONE << 4) | NONE);
++
++
++	//bank 2
++	printk(BIOS_INFO, "Bank 2:\n");
++	cfg_write(0x11, (NONE << 4) | R12_C12);	//64M addr (R/C = 12/12)
++	bank_size[2] = detect_size();
++	if (bank_size[2] != NONE) {
++		//set EDO for bank
++		cfg_modify(0x1a, 0, 1 << 2);
++		detect_edo();	//NOTICE EDO bit will stay on
++	}
++	// cfg_write(0x11, (NONE << 4) | NONE);
++
++	// cfg_modify(0x1a, 0xf, 0);
++
++	//bank 3
++	printk(BIOS_INFO, "Bank 3:\n");
++	cfg_write(0x11, (R12_C12 << 4) | NONE);	//64M addr (R/C = 12/12)
++	bank_size[3] = detect_size();
++	if (bank_size[3] != NONE) {
++		//set EDO for bank
++		cfg_modify(0x1a, 0, 1 << 3);
++		detect_edo();	//NOTICE EDO bit will stay on
++	}
++	// cfg_write(0x11, (NONE << 4) | NONE);
++
++	//enable DRAM
++
++	cfg_write(0x10,
++		((bank_size[1] << 4) & 0xf0) |
++		(bank_size[0] & 0xf)
++	);
++
++	cfg_write(0x11,
++		((bank_size[3] << 4) & 0xf0) |
++		(bank_size[2] & 0xf)
++	);
++
++	//reenable l2 cache, if was enabled before
++	//TODO detect it from reserved config in 0x17
++	// if (is_l2_enabled) {
++	// 	cfg_modify(0x17, 0, 2);
++	// }
++
++	//reenable l1 cache, if was enabled before
++	// if (is_l1_enabled) {
++	// 	cfg_modify(0x17, 0, 1);
++	// }
++
++	//TODO enable refresh from cmos
++
++
++	printk(BIOS_INFO, "DRAM enabled\n");
++}
+diff --git a/src/northbridge/ali/m1489/ramstage_exit.c b/src/northbridge/ali/m1489/ramstage_exit.c
+new file mode 100644
+index 0000000000..7c39bd16db
+--- /dev/null
++++ b/src/northbridge/ali/m1489/ramstage_exit.c
+@@ -0,0 +1,78 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <console/console.h>
++
++#include <program_loading.h>
++#include <cbmem.h>
++
++#include "regs.h"
++
++//NOTICE only in ramstage, rest is weak
++void platform_prog_run(struct prog *prog)
++{
++	//reset BIOS access to default
++
++	printk(BIOS_DEBUG, "ROM access to default\n");
++
++	//NOTICE cfg_modify(u8 idx, u8 clear, u8 set)
++
++	//enable ROM in A31
++	cfg_modify(0x21, 0, 0x20);
++
++	//normal E/F access
++	cfg_modify(0x2b, 0x20, 0);
++
++	//disable flash write, segment E is ISA
++	cfg_modify(0x12, 0, 0x00);
++
++	//shadow region read enabled (for seabios)
++	//disable write (seabios will enable it where wants)
++	cfg_modify(0x14, 0x20, 0x10);
++
++	//write fast back to back, CPU->PCI write burst
++	//CPU to PCI write byte merge, CPU to PCI write buffer
++	//dynamic PCI memory, dynamic ISA memory
++	// cfg_modify(0x20, 0, 0x3f);	//TODO orig
++	cfg_modify(0x20, 1, 0x3e);	//disable fast dynamic ISA
++
++	//bit 1 should be "1"
++	cfg_modify(0x22, 0, 0x2);
++
++
++	//TODO init right before ramstage!! with CAR enabled
++	//move it there eventually if stable enough
++
++	//shadow region L1
++	//uncached! (or uniflash wont work)
++	//cacheable (+ L2: with write protection?)
++	// cfg_modify(0x17, 0x80 | 0x40, 8 | 0x10);
++	//NOTICE force L2 cache nondirty (bit can be wrong in chip after reset)
++	//NOTICE force L2 cache miss (always load address)
++
++	//L1, L2 cache enable
++	// cfg_modify(0x16, 0, 0x07);
++
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++
++
++	//normal dirty and miss functionality
++	// cfg_modify(0x17, 8 | 0x10, 0);
++
++
++	///////////////
++
++#if 0
++	//NOTICE TEMP TODO
++	cfg_modify(0x12, 0x80, 0);	//disable hidden refresh
++	cfg_modify(0x20, 0xff, 0);	//disable all PCI buffers
++	cfg_modify(0x21, 4, 0);		//disable improve reliability DX4 2-1-1-1
++
++	cfg_modify(0x22, 2, 0);		//reserved bit 1 back to 0 ?
++
++	cfg_modify(0x22, 8 | 0x10, 0);	//no PCI improvements
++#endif
++
++}
+diff --git a/src/northbridge/ali/m1489/regs.h b/src/northbridge/ali/m1489/regs.h
+new file mode 100644
+index 0000000000..ec49149174
+--- /dev/null
++++ b/src/northbridge/ali/m1489/regs.h
+@@ -0,0 +1,112 @@
++#ifndef NORTHBRIDGE_ALI_M1489_REGS_H
++#define NORTHBRIDGE_ALI_M1489_REGS_H
++
++/*
++ * CFG _0 _1 _2 _3 _4 _5 _6 _7 _8 _9 _a _b _c _d _e _f
++ * 00: ff 0d 0d c5 ff ff ff ff ff ff ff ff ff ff ff ff
++ * 10: 66 66 01 03 9f 50 07 02 ff 54 5f 45 00 00 08 ff
++ * 20: 08 32 1d ff ff 80 00 00 04 32 45 d7 ff ff ff ff
++ * 30: 10 fd e0 00 00 00 e0 ee 00 00 00 00 03 01 00 00
++ * 40: 2b ff 00 00 1f 80 ff ff ff ff ff ff ff ff ff ff
++ *
++ * 0x20 was 0x08 (or 0x2c?)
++ *
++ *
++ * original
++ *	0x12 nema zaplej hidden refresh?
++ *	0x12 E segment v ROM
++ *	0x13 no shadow segC ...
++ *	0x20 pouze CPU to PCI write byte merge
++ *	0x21 no improve reliability?
++ *	0x22 no reserved bit to 1
++ *
++ *
++ * single SIMM, front
++ * CFG _0 _1 _2 _3 _4 _5 _6 _7 _8 _9 _a _b _c _d _e _f
++ * 00: ff 0d 0d c5 ff ff ff ff ff ff ff ff ff ff ff ff
++ * 10: 6f 6f 01 03 9f 50 07 02 ff 54 5a 45 00 00 08 ff
++ * 20: 08 32 1d ff ff 80 00 00 04 32 45 d7 ff ff ff ff
++ * 30: 10 fd e0 00 00 00 e0 ee 00 00 00 00 03 05 00 00
++ * 40: 2b ff 00 00 1f 80 ff ff ff ff ff ff ff ff ff ff
++ *
++ *
++ * early TAG rising 0x16.7 works only in back slot?? :-D
++ *
++ */
++
++#include <arch/io.h>
++
++
++
++//rom CS at 0xe0000
++#define EN_SEGMENT_E	cfg_write(0x12, cfg_read(0x12) | 1)
++#define DIS_SEGMENT_E	cfg_write(0x12, cfg_read(0x12) & ~1)
++
++//shadow 0xe0000-0xf0000, read/write control
++#define EN_SHADOW_EF	cfg_write(0x14, cfg_read(0x14) | 0x3f)
++#define DIS_SHADOW_EF	cfg_write(0x14, cfg_read(0x14) & ~0x3f)
++
++//enabled A31 ROM recognition 0xffff0000
++#define EN_ROM_A31	cfg_write(0x21, cfg_read(0x21) | 0x20)
++#define DIS_ROM_A31	cfg_write(0x21, cfg_read(0x21) & ~0x20)
++
++
++//swap E F
++#define EN_SWAP_EF	cfg_write(0x2b, cfg_read(0x2b) | 0x20)
++#define DIS_SWAP_EF	cfg_write(0x2b, cfg_read(0x2b) & ~0x20)
++
++
++
++
++#define PORT_INDEX	0x22
++#define PORT_DATA	0x23
++
++// #define R01_HW	0x1
++
++
++struct ali_cfg_entry {
++	u8 idx;
++	u8 val;
++};
++
++
++//TODO spinlock?
++
++static __always_inline
++u8 cfg_read(u8 idx)
++{
++	outb(idx, PORT_INDEX);
++	return inb(PORT_DATA);
++}
++
++static __always_inline
++void cfg_write(u8 idx, u8 val)
++{
++	outb(idx, PORT_INDEX);
++	outb(val, PORT_DATA);
++}
++
++static __always_inline
++void cfg_modify(u8 idx, u8 clear, u8 set)
++{
++	u8 val;
++
++	outb(idx, PORT_INDEX);
++
++	val = inb(PORT_DATA);
++	val &= ~clear;
++	val |= set;
++	outb(val, PORT_DATA);
++}
++
++static __always_inline
++void cfg_unlock(void)
++{
++	cfg_write(0x03, 0xc5);
++}
++
++
++
++
++
++#endif /* NORTHBRIDGE_ALI_M1489_REGS_H */
+diff --git a/src/northbridge/ali/m1489/romstage.c b/src/northbridge/ali/m1489/romstage.c
+new file mode 100644
+index 0000000000..461f7099a6
+--- /dev/null
++++ b/src/northbridge/ali/m1489/romstage.c
+@@ -0,0 +1,87 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include <console/console.h>
++#include <arch/romstage.h>
++#include <cbmem.h>
++#include <device/mmio.h>
++
++#include "regs.h"
++
++
++static const struct ali_cfg_entry romstage_table[] = {
++	{0x3, 0xc5},	//unlock
++
++	//not ram detecct, just force used modules TODO TODO TODO TODO
++	// {0x10, 0x66},	//32M double sided SIMM
++	// {0x11, 0x66},	//32M double sided SIMM
++	// {0x13, 0xf0},	//C outside RAM shadow, D in RAM shadow	TODO???
++
++	// {0x16, 0x07},	//L1 L2 enable
++	// {0x17, 0x02},	//L2 cache configuration (how to autodetect?)
++	// {0x1d, 0x00},	//not documented but 0?
++};
++
++
++void dram_init(void);
++void l2_cache_init(void);
++
++
++void mainboard_romstage_entry(void)
++{
++	printk(BIOS_DEBUG, "mb dram_initialize\n");
++
++
++#if 1
++
++	// if (cold_reset) {
++	if (1) {	//TODO
++		for (unsigned idx=0;idx<ARRAY_SIZE(romstage_table);idx++) {
++			cfg_write(romstage_table[idx].idx, romstage_table[idx].val);
++		}
++
++		l2_cache_init();
++
++		//NOTICE L2 configured but not enabled
++
++		dram_init();
++
++		//NOTICE DRAM enabled
++
++		// asm volatile("rdtsc" :::);
++		// asm volatile("rdtsc" :::);
++		// asm volatile("rdtsc" :::);
++		// asm volatile("rdtsc" :::);
++
++		printk(BIOS_DEBUG, "RAM size %lu kiB\n", cbmem_top_chipset() >> 10);
++
++		//TODO originally fill was wrapped with force miss/nondirty
++		//enable L2
++		cfg_modify(0x16, 0, 0x02);
++
++		//force miss
++		cfg_modify(0x17, 0, 8);
++
++		//TODO global RAM INIT is after this, maybe disable cache?
++		//cache maybe poisoned now
++
++		//L2 cache should be invalidated
++		//scan max possible size of L2 cache, should fill itself completely
++		//cache line is 16 bytes, so 16B steps?
++		for (uintptr_t addr = 0; addr < 1*MiB; addr+=16) {
++			if ((addr % 0x10000) == 0)
++				printk(BIOS_DEBUG, "[%08lx]\n",addr);
++
++			read32p(addr);
++		}
++
++		//disable force miss
++		cfg_modify(0x17, 8, 0);
++	}
++
++#endif
++	printk(BIOS_DEBUG, "TODO cbmem_initialize\n");
++
++	cbmem_initialize_empty();
++
++	printk(BIOS_DEBUG, "mb romstage exit\n");
++}
+diff --git a/src/southbridge/ali/m1487/regs.h b/src/southbridge/ali/m1487/regs.h
+new file mode 100644
+index 0000000000..029aaada0f
+--- /dev/null
++++ b/src/southbridge/ali/m1487/regs.h
+@@ -0,0 +1,41 @@
++#ifndef SOUTHBRIDGE_ALI_M1487_REGS_H
++#define SOUTHBRIDGE_ALI_M1487_REGS_H
++
++#include <arch/io.h>
++#include <types.h>
++
++/*
++
++static __always_inline
++u8 sb_read_cfg8(u16 idx)
++{
++	outw(idx, 0x22);
++	return inb(0x23);
++}
++
++
++static __always_inline
++u16 sb_read_cfg16(u16 idx)
++{
++	outw(idx, 0x22);
++	return inw(0x23);
++}
++
++
++static __always_inline
++void sb_write_cfg8(u16 idx, u8 val)
++{
++	outw(idx, 0x22);
++	outb(val, 0x23);
++}
++
++
++static __always_inline
++void sb_write_cfg16(u16 idx, u16 val)
++{
++	outw(idx, 0x22);
++	outw(val, 0x23);
++}
++*/
++
++#endif /* NORTHBRIDGE_ALI_M1487_REGS_H */
+-- 
+2.46.1
+

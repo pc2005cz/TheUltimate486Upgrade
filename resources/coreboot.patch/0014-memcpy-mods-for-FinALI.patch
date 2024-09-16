@@ -1,0 +1,156 @@
+From 3040da72b75fcf1704eddcb53f5f05d5670232e0 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:25:31 +0200
+Subject: [PATCH 14/26] "memcpy" mods for FinALI
+
+reading from E0000 at FFFF0000
++ debugs
+---
+ src/commonlib/region.c | 107 ++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 106 insertions(+), 1 deletion(-)
+
+diff --git a/src/commonlib/region.c b/src/commonlib/region.c
+index 4153f0a47d..9811f43a28 100644
+--- a/src/commonlib/region.c
++++ b/src/commonlib/region.c
+@@ -84,12 +84,26 @@ ssize_t rdev_readat(const struct region_device *rd, void *b, size_t offset,
+ 		.size = size,
+ 	};
+ 
++	// printk(BIOS_DEBUG, "G0\n");
++
+ 	if (!normalize_and_ok(&rd->region, &req))
+ 		return -1;
+ 
++	// printk(BIOS_DEBUG, "G1\n");
++
+ 	rdev = rdev_root(rd);
+ 
+-	return rdev->ops->readat(rdev, b, req.offset, req.size);
++	// printk(BIOS_DEBUG, "G2a %p %x %u\n", b, offset, size);
++	// printk(BIOS_DEBUG, "G2b %p\n", rdev->ops);
++	// printk(BIOS_DEBUG, "G2c %p\n", rdev->ops->readat);
++
++	// asm volatile("rdtsc" :::);
++	// asm volatile("rdtsc" :::);
++	ssize_t ret = rdev->ops->readat(rdev, b, req.offset, req.size);
++
++	// printk(BIOS_DEBUG, "G3 %i\n", ret);
++
++	return ret;
+ }
+ 
+ ssize_t rdev_writeat(const struct region_device *rd, const void *b,
+@@ -238,18 +252,109 @@ static int mdev_munmap(const struct region_device *rd __always_unused,
+ 	return 0;
+ }
+ 
++
++#if 0
+ static ssize_t mdev_readat(const struct region_device *rd, void *b,
+ 				size_t offset, size_t size)
+ {
+ 	const struct mem_region_device *mdev;
+ 
++	// printk(BIOS_DEBUG, "H1\n");
++
+ 	mdev = container_of(rd, __typeof__(*mdev), rdev);
+ 
++	printk(BIOS_DEBUG, "!!!!!!H2 %p<-%p n:%u\n", b, &mdev->base[offset], size);
++
++	uintptr_t dstaddr = (uintptr_t) b;
++	uintptr_t srcaddr = (uintptr_t) &mdev->base[offset];
++
++	if ((ENV_RAMSTAGE) && (srcaddr >= 0xe0000) && (srcaddr < 0x100000)) {
++		size_t frag_size = size;
++
++
++		DIS_SEGMENT_E;	//so we can have RAM
++		EN_SHADOW_EF;	//enable RAM
++		EN_ROM_A31;	//enable FFFF
++
++		//now we can switch between E and F in FFFF
++
++		if (srcaddr < 0xf0000) {
++			//map E to FFFF
++			EN_SWAP_EF;
++
++			frag_size = size < (0xf0000-srcaddr) ? size: 0xf0000-srcaddr;
++
++			printk(BIOS_DEBUG, " ROME a:0x%08lx s:0x%08x\n", srcaddr, frag_size);
++
++			memcpy((void*)dstaddr, (void*)(srcaddr | 0xffff0000), frag_size);
++
++			dstaddr += frag_size;	//next start
++			srcaddr += frag_size;	//should be either 0xf0000 or less (and frag == 0)
++			frag_size = size - frag_size;
++
++			printk(BIOS_DEBUG, " ROMEnew a:0x%08lx s:0x%08x\n", srcaddr, frag_size);
++		}
++
++		if (frag_size) {
++			//rest of buffer should be always in 0xf0000
++
++			if (frag_size > 0x10000) {
++				printk(BIOS_INFO, "overflowed 0xfffff!!!\n");
++			}
++
++			//map F to FFFF
++			DIS_SWAP_EF;
++
++			printk(BIOS_DEBUG, " ROMF a:0x%08lx s:0x%08x\n", srcaddr, frag_size);
++
++			memcpy((void*)dstaddr, (void*)(srcaddr | 0xffff0000), frag_size);
++		}
++	} else {
++		memcpy(b, &mdev->base[offset], size);
++	}
++
++
++	return size;
++}
++#endif
++
++
++static ssize_t mdev_readat(const struct region_device *rd, void *b,
++			   size_t offset, size_t size)
++{
++	const struct mem_region_device *mdev;
++
++	// printk(BIOS_DEBUG, "H1 %p\n", &b);
++
++	mdev = container_of(rd, __typeof__(*mdev), rdev);
++
++printk(BIOS_DEBUG, "!!read at %p<-%p n:%u TODO\n", b, &mdev->base[offset], size);
++
++#if ENV_BOOTBLOCK
++	uintptr_t dstaddr = (uintptr_t) b;
++	uintptr_t srcaddr = (uintptr_t) &mdev->base[offset];
++
++	//NOTICE ENV_ROMSTAGE could be OK when ram is initialized
++	if (
++		/*(ENV_ROMSTAGE || ENV_BOOTBLOCK) &&*/
++		(dstaddr >= 0xe0000) &&
++		(dstaddr <= 0xfffff) &&
++		(srcaddr >= 0xfffe0000) &&
++		(srcaddr <= 0xffffffff)
++	)
++	{
++printk(BIOS_DEBUG, "don't copy from ROM to ROM \n");
++		//don't copy from ROM to the same ROM
++		return size;
++	}
++#endif
++
+ 	memcpy(b, &mdev->base[offset], size);
+ 
+ 	return size;
+ }
+ 
++
+ static ssize_t mdev_writeat(const struct region_device *rd, const void *b,
+ 				size_t offset, size_t size)
+ {
+-- 
+2.46.1
+

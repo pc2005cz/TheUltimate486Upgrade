@@ -1,0 +1,45 @@
+From 534cbe5bc8cab09c6972db7cfccee00b4546161c Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:31:44 +0200
+Subject: [PATCH 19/27] Disable unusable reboots
+
+NOTICE 8042 reboot is disabled too
+---
+ src/resume.c | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/src/resume.c b/src/resume.c
+index fb0b8a89..559eac64 100644
+--- a/src/resume.c
++++ b/src/resume.c
+@@ -126,19 +126,22 @@ tryReboot(void)
+     dprintf(1, "Attempting a hard reboot\n");
+ 
+     // Use a QEMU specific reboot on QEMU
+-    qemu_reboot();
++    // qemu_reboot();
+ 
+     // Reboot using ACPI RESET_REG
+-    acpi_reboot();
++    // acpi_reboot();
+ 
+     // Try keyboard controller reboot.
+-    i8042_reboot();
++    // i8042_reboot();
+ 
+     // Try PCI 0xcf9 reboot
+-    pci_reboot();
++    // pci_reboot();	//not on 486
++
++    // PORT 92h reset
++    outb(inb(0x92) | 1, 0x92);
+ 
+     // Try triple fault
+-    asm volatile("int3");
++    // asm volatile("int3");
+ 
+     panic("Could not reboot");
+ }
+-- 
+2.46.1
+

@@ -1,0 +1,66 @@
+From bc8545bad8f02832f37233a050aa458201cf9442 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:37:58 +0200
+Subject: [PATCH 24/27] e820 debug messages
+
+---
+ src/e820map.c | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/src/e820map.c b/src/e820map.c
+index 39445cf6..ec8018ba 100644
+--- a/src/e820map.c
++++ b/src/e820map.c
+@@ -36,6 +36,8 @@ insert_e820(int i, u64 start, u64 size, u32 type)
+         return;
+     }
+ 
++dprintf(1, " insert_e820 %d 0x%016llx 0x%016llx 0x%08x\n", i, start, size, type);
++
+     memmove(&e820_list[i+1], &e820_list[i]
+             , sizeof(e820_list[0]) * (e820_count - i));
+     e820_count++;
+@@ -45,7 +47,8 @@ insert_e820(int i, u64 start, u64 size, u32 type)
+     e->type = type;
+ }
+ 
+-static const char *
++//static
++const char *
+ e820_type_name(u32 type)
+ {
+     switch (type) {
+@@ -79,7 +82,7 @@ dump_map(void)
+ void
+ e820_add(u64 start, u64 size, u32 type)
+ {
+-    dprintf(8, "Add to e820 map: %08llx %08llx %d\n", start, size, type);
++    dprintf(1, "Add to e820 map: %08llx %08llx %d\n", start, size, type);
+ 
+     if (! size)
+         // Huh?  Nothing to do.
+@@ -89,7 +92,12 @@ e820_add(u64 start, u64 size, u32 type)
+     u64 end = start + size;
+     int i;
+     for (i=0; i<e820_count; i++) {
++        // dprintf(1, " check %u %llx %llx\n", i, start, size);
++
+         struct e820entry *e = &e820_list[i];
++
++        dprintf(1, "  start:%016llx size:%016llx type:%s\n", e->start, e->size, e820_type_name(e->type));
++
+         u64 e_end = e->start + e->size;
+         if (start > e_end)
+             continue;
+@@ -141,6 +149,8 @@ e820_add(u64 start, u64 size, u32 type)
+ void
+ e820_remove(u64 start, u64 size)
+ {
++    dprintf(1, "remove from e820: %08llx %08llx\n", start, size);
++
+     e820_add(start, size, E820_HOLE);
+ }
+ 
+-- 
+2.46.1
+

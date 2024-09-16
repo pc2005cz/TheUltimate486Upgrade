@@ -1,0 +1,179 @@
+From a7c9f054890852f209cb20d3704b43e1e5942875 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:22:50 +0200
+Subject: [PATCH 07/27] Boot order debug
+
+(not implemented on 486)
+---
+ src/boot.c | 71 ++++++++++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 61 insertions(+), 10 deletions(-)
+
+diff --git a/src/boot.c b/src/boot.c
+index 02274928..f1afa7a4 100644
+--- a/src/boot.c
++++ b/src/boot.c
+@@ -289,9 +289,12 @@ find_prio(const char *glob)
+ {
+     dprintf(1, "Searching bootorder for: %s\n", glob);
+     int i;
+-    for (i = 0; i < BootorderCount; i++)
++    for (i = 0; i < BootorderCount; i++) {
++dprintf(1, "B1 %d %d\n", i, BootorderCount);
+         if (glob_prefix(glob, Bootorder[i]))
+             return i+1;
++    }
++dprintf(1, "B2 NF\n");
+     return -1;
+ }
+ 
+@@ -301,6 +304,9 @@ u8 is_bootprio_strict(void)
+ 
+     if (prio_halt == -2)
+         prio_halt = find_prio("HALT");
++
++dprintf(1, "C1\n");
++
+     return prio_halt >= 0;
+ }
+ 
+@@ -313,7 +319,12 @@ int bootprio_find_pci_device(struct pci_device *pci)
+     // Find pci device - for example: /pci@i0cf8/ethernet@5
+     char desc[256];
+     build_pci_path(desc, sizeof(desc), "*", pci);
+-    return find_prio(desc);
++
++dprintf(1, "C2\n");
++int ret = find_prio(desc);
++dprintf(1, "C2b\n");
++
++    return ret;
+ }
+ 
+ int bootprio_find_mmio_device(void *mmio)
+@@ -322,7 +333,12 @@ int bootprio_find_mmio_device(void *mmio)
+         return -1;
+     char desc[256];
+     snprintf(desc, sizeof(desc), "/virtio-mmio@%016x/*", (u32)mmio);
+-    return find_prio(desc);
++
++dprintf(1, "C3\n");
++int ret = find_prio(desc);
++dprintf(1, "C3b\n");
++
++    return ret;
+ }
+ 
+ int bootprio_find_scsi_device(struct pci_device *pci, int target, int lun)
+@@ -334,7 +350,11 @@ int bootprio_find_scsi_device(struct pci_device *pci, int target, int lun)
+         return -1;
+     char desc[256];
+     build_scsi_path(desc, sizeof(desc), pci, target, lun);
+-    return find_prio(desc);
++
++dprintf(1, "C4\n");
++int ret = find_prio(desc);
++dprintf(1, "C4b\n");
++    return ret;
+ }
+ 
+ int bootprio_find_scsi_mmio_device(void *mmio, int target, int lun)
+@@ -344,7 +364,12 @@ int bootprio_find_scsi_mmio_device(void *mmio, int target, int lun)
+     char desc[256];
+     snprintf(desc, sizeof(desc), "/virtio-mmio@%016x/*@0/*@%x,%x",
+              (u32)mmio, target, lun);
+-    return find_prio(desc);
++
++dprintf(1, "C5\n");
++int ret = find_prio(desc);
++dprintf(1, "C5b\n");
++
++    return ret;
+ }
+ 
+ int bootprio_find_ata_device(struct pci_device *pci, int chanid, int slave)
+@@ -358,7 +383,12 @@ int bootprio_find_ata_device(struct pci_device *pci, int chanid, int slave)
+         return -1;
+     char desc[256];
+     build_ata_path(desc, sizeof(desc), pci, chanid, slave);
+-    return find_prio(desc);
++
++dprintf(1, "C6\n");
++int ret = find_prio(desc);
++dprintf(1, "C6b\n");
++
++    return ret;
+ }
+ 
+ int bootprio_find_fdc_device(struct pci_device *pci, int port, int fdid)
+@@ -374,7 +404,11 @@ int bootprio_find_fdc_device(struct pci_device *pci, int port, int fdid)
+     char desc[256], *p;
+     p = build_pci_path(desc, sizeof(desc), "isa", pci);
+     snprintf(p, desc+sizeof(desc)-p, "/fdc@%04x/floppy@%x", port, fdid);
+-    return find_prio(desc);
++
++dprintf(1, "C7\n");
++int ret = find_prio(desc);
++dprintf(1, "C7b\n");
++    return ret;
+ }
+ 
+ int bootprio_find_pci_rom(struct pci_device *pci, int instance)
+@@ -386,7 +420,11 @@ int bootprio_find_pci_rom(struct pci_device *pci, int instance)
+     p = build_pci_path(desc, sizeof(desc), "*", pci);
+     if (instance)
+         snprintf(p, desc+sizeof(desc)-p, ":rom%x", instance);
+-    return find_prio(desc);
++
++dprintf(1, "C8\n");
++int ret = find_prio(desc);
++dprintf(1, "C8b\n");
++    return ret;
+ }
+ 
+ int bootprio_find_named_rom(const char *name, int instance)
+@@ -398,7 +436,11 @@ int bootprio_find_named_rom(const char *name, int instance)
+     p = desc + snprintf(desc, sizeof(desc), "/rom@%s", name);
+     if (instance)
+         snprintf(p, desc+sizeof(desc)-p, ":rom%x", instance);
+-    return find_prio(desc);
++
++dprintf(1, "C9\n");
++int ret = find_prio(desc);
++dprintf(1, "C9b\n");
++    return ret;
+ }
+ 
+ static int usb_portmap(struct usbdevice_s *usbdev)
+@@ -439,12 +481,20 @@ int bootprio_find_usb(struct usbdevice_s *usbdev, int lun)
+     p = build_usb_path(p, desc+sizeof(desc)-p, usbdev->hub);
+     snprintf(p, desc+sizeof(desc)-p, "/storage@%x/*@0/*@0,%x"
+              , usb_portmap(usbdev), lun);
++
++dprintf(1, "C10\n");
+     int ret = find_prio(desc);
++
++dprintf(1, "C10b\n");
+     if (ret >= 0)
+         return ret;
+     // Try usb-host/redir - for example: /pci@i0cf8/usb@1,2/usb-host@1
+     snprintf(p, desc+sizeof(desc)-p, "/usb-*@%x", usb_portmap(usbdev));
+-    return find_prio(desc);
++
++    int ret2= find_prio(desc);
++
++dprintf(1, "C10c\n");
++    return ret2;
+ }
+ 
+ 
+@@ -468,6 +518,7 @@ boot_init(void)
+     if (! CONFIG_BOOT)
+         return;
+ 
++	//pc2005 TODO non qemu boot order from cmos
+     if (CONFIG_QEMU) {
+         // On emulators, get boot order from nvram.
+         if (rtc_read(CMOS_BIOS_BOOTFLAG1) & 1)
+-- 
+2.46.1
+

@@ -1,0 +1,48 @@
+From fdacc6e58c079eb57ede226acf4898e0894902d9 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:57:32 +0200
+Subject: [PATCH 03/11] Host perl support?
+
+Use perl at the correct build host location
+---
+ package/Makefile.in    |  2 +-
+ package/perl/Config.in | 10 ++++++++++
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/package/Makefile.in b/package/Makefile.in
+index b68d62fc45..e06acc5fe8 100644
+--- a/package/Makefile.in
++++ b/package/Makefile.in
+@@ -265,7 +265,7 @@ export PERL=$(shell which perl)
+ # host-intltool needs libxml-parser-perl, which Buildroot installs in
+ # $(HOST_DIR)/lib/perl, so we must make sure that the system perl
+ # finds this perl module by exporting the proper value for PERL5LIB.
+-export PERL5LIB=$(HOST_DIR)/lib/perl
++export PERL5LIB=$(HOST_DIR)/lib64/perl5
+ 
+ TARGET_MAKE_ENV = PATH=$(BR_PATH)
+ 
+diff --git a/package/perl/Config.in b/package/perl/Config.in
+index 0ead1c4a46..e41da964be 100644
+--- a/package/perl/Config.in
++++ b/package/perl/Config.in
+@@ -8,6 +8,16 @@ config BR2_PACKAGE_PERL
+ 
+ 	  http://www.perl.org/
+ 
++config BR2_PACKAGE_HOST_PERL
++	bool "host_perl"
++	depends on BR2_USE_MMU # fork()
++	help
++	  Larry Wall's Practical Extraction and Report Language
++	  An interpreted scripting language, known among some as
++	  "Unix's Swiss Army Chainsaw".
++
++	  http://www.perl.org/
++
+ if BR2_PACKAGE_PERL
+ 
+ config BR2_PACKAGE_PERL_MODULES
+-- 
+2.46.1
+

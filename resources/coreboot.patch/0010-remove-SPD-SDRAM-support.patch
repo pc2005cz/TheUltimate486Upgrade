@@ -1,0 +1,76 @@
+From 90a9328cd3041d41791680e0f5bbe3fe55a72d2a Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:34:29 +0200
+Subject: [PATCH 10/26] remove SPD (SDRAM) support
+
+---
+ src/device/Makefile.inc      | 20 ++++++++++----------
+ src/device/dram/Makefile.inc |  2 ++
+ src/lib/Makefile.inc         |  2 +-
+ 3 files changed, 13 insertions(+), 11 deletions(-)
+
+diff --git a/src/device/Makefile.inc b/src/device/Makefile.inc
+index 3018ef9626..c7892f42cd 100644
+--- a/src/device/Makefile.inc
++++ b/src/device/Makefile.inc
+@@ -47,16 +47,16 @@ verstage-$(CONFIG_SOFTWARE_I2C) += software_i2c.c
+ romstage-$(CONFIG_SOFTWARE_I2C) += software_i2c.c
+ ramstage-$(CONFIG_SOFTWARE_I2C) += software_i2c.c
+ 
+-bootblock-y += i2c.c
+-verstage-y += i2c.c
+-romstage-y += i2c.c
+-ramstage-y += i2c.c
+-ramstage-y += i2c_bus.c
++#bootblock-y += i2c.c
++#verstage-y += i2c.c
++#romstage-y += i2c.c
++#ramstage-y += i2c.c
++#ramstage-y += i2c_bus.c
+ 
+-bootblock-y += mmio.c
+-verstage-y += mmio.c
+-romstage-y += mmio.c
+-ramstage-y += mmio.c
++#bootblock-y += mmio.c
++#verstage-y += mmio.c
++#romstage-y += mmio.c
++#ramstage-y += mmio.c
+ 
+ ramstage-y += resource_allocator_common.c
+ ramstage-y += resource_allocator_v4.c
+@@ -64,4 +64,4 @@ ramstage-y += resource_allocator_v4.c
+ ramstage-$(CONFIG_XHCI_UTILS) += xhci.c
+ 
+ ramstage-y += gpio.c
+-ramstage-y += mdio.c
++#ramstage-y += mdio.c
+diff --git a/src/device/dram/Makefile.inc b/src/device/dram/Makefile.inc
+index fc472ea711..80481bddbd 100644
+--- a/src/device/dram/Makefile.inc
++++ b/src/device/dram/Makefile.inc
+@@ -1,6 +1,8 @@
+ 
++ifneq ($(CONFIG_NO_DDR5)$(CONFIG_NO_LPDDR4)$(CONFIG_NO_DDR4)$(CONFIG_NO_DDR3)$(CONFIG_NO_DDR2),)
+ romstage-y += ddr_common.c
+ ramstage-y += ddr_common.c spd.c
++endif
+ 
+ romstage-$(CONFIG_USE_DDR5) += ddr5.c
+ ramstage-$(CONFIG_USE_DDR5) += ddr5.c
+diff --git a/src/lib/Makefile.inc b/src/lib/Makefile.inc
+index c83004a866..3355669cd1 100644
+--- a/src/lib/Makefile.inc
++++ b/src/lib/Makefile.inc
+@@ -373,7 +373,7 @@ $(foreach stage,$(libhwbase-stages), \
+ 
+ endif # CONFIG_ROMSTAGE_LIBHWBASE || CONFIG_RAMSTAGE_LIBHWBASE
+ 
+-romstage-y += spd_bin.c
++#romstage-y += spd_bin.c
+ 
+ ifeq ($(CONFIG_HAVE_SPD_IN_CBFS),y)
+ LIB_SPD_BIN = $(obj)/spd.bin
+-- 
+2.46.1
+

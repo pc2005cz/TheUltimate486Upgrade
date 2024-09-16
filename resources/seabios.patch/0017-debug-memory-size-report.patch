@@ -1,0 +1,24 @@
+From 187bb580e396edee7c2e314a3b24cec377ecff98 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:30:33 +0200
+Subject: [PATCH 17/27] debug memory size report
+
+---
+ src/misc.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/misc.c b/src/misc.c
+index b5117304..ed09aa3f 100644
+--- a/src/misc.c
++++ b/src/misc.c
+@@ -34,6 +34,7 @@ handle_12(struct bregs *regs)
+ {
+     debug_enter(regs, DEBUG_HDL_12);
+     regs->ax = GET_BDA(mem_size_kb);
++    dprintf(3, "mem_size_kb %u\n", regs->ax);
+ }
+ 
+ // INT 11h Equipment List Service Entry Point
+-- 
+2.46.1
+

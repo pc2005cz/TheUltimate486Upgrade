@@ -1,0 +1,166 @@
+From 29dd94b2e2127b93ced75902131fbde59fe490ab Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:40:02 +0200
+Subject: [PATCH 27/27] Add support for C/D/E/F segments locking
+
+UM8881/8886 and FinALI (untested)
+---
+ src/fw/shadow.c | 129 +++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 122 insertions(+), 7 deletions(-)
+
+diff --git a/src/fw/shadow.c b/src/fw/shadow.c
+index 8930616e..365936b9 100644
+--- a/src/fw/shadow.c
++++ b/src/fw/shadow.c
+@@ -111,16 +111,104 @@ make_bios_readonly_intel(u16 bdf, u32 pam0)
+     pci_config_writel(bdf, ALIGN_DOWN(pam0, 4) + 4, pamdata.data32[1]);
+ }
+ 
++///////////////////////////////
++
++/////// finali
++
++//finali config access (for shadow write enable)
++#define PORT_INDEX	0x22
++#define PORT_DATA	0x23
++
++static void
++make_bios_writable_finali(void)
++{
++	dprintf(3, "enabling shadow ram\n");
++
++	//TODO shadow regions? all?
++	//TODO pc2005, this is only for ALI
++
++	//unlock chipset
++	outb(0x03, PORT_INDEX);
++	outb(0xc5, PORT_DATA);
++
++	//enable write
++	outb(0x14, PORT_INDEX);
++	outb(inb(PORT_DATA) | 0x20, PORT_DATA);
++
++	//lock chipset
++	outb(0x03, PORT_INDEX);
++	outb(0x0, PORT_DATA);
++}
++
++static void
++make_bios_readonly_finali(void)
++{
++    // Flush any pending writes before locking memory.
++	//TODO WT-only 486
++	wbinvd();
++
++	dprintf(1, "locking shadow ram on FinALI\n");
++
++	//unlock chipset
++	outb(0x03, PORT_INDEX);
++	outb(0xc5, PORT_DATA);
++
++	//disable write
++	outb(0x14, PORT_INDEX);
++	outb(inb(PORT_DATA) & ~0x20, PORT_DATA);
++
++	//lock chipset
++	outb(0x03, PORT_INDEX);
++	outb(0x0, PORT_DATA);
++}
++
++
++//UMC HB4
++
++static void
++make_bios_writable_umc(void)
++{
++	dprintf(1, "UMC: shadow ram unprotect\n");
++
++	const u16 bdf = pci_to_bdf(0, 0x10, 0);
++
++	u8 val = pci_config_readb(bdf, 0x55);
++	val &= ~(1<<6);	//protection off
++	pci_config_writeb(bdf, 0x55, val);
++}
++
++static void
++make_bios_readonly_umc(void)
++{
++	dprintf(1, "UMC: shadow ram protect\n");
++
++	// return;	//TODO
++
++	// Flush any pending writes before locking memory.
++	wbinvd();
++	//TODO on WT-only 486
++
++	const u16 bdf = pci_to_bdf(0, 0x10, 0);
++
++	u8 val = pci_config_readb(bdf, 0x55);
++	val |= 1<<6;	//protection on
++	pci_config_writeb(bdf, 0x55, val);
++}
++
++
++////////////////////////////////
++
+ static int ShadowBDF = -1;
+ 
+ // Make the 0xc0000-0x100000 area read/writable.
+ void
+ make_bios_writable(void)
+ {
+-    if (!CONFIG_QEMU || runningOnXen())
+-        return;
+-
+-    dprintf(3, "enabling shadow ram\n");
++	//pc2005
++	//TODO hack for finali or UMC
++	// make_bios_writable_finali();
++	make_bios_writable_umc();
++	return;
+ 
+     // At this point, statically allocated variables can't be written,
+     // so do this search manually.
+@@ -150,9 +238,36 @@ make_bios_writable(void)
+ void
+ make_bios_readonly(void)
+ {
+-    if (!CONFIG_QEMU || runningOnXen())
+-        return;
+-    dprintf(3, "locking shadow ram\n");
++    //pc2005
++    //TODO hack for finali or UMC
++    dprintf(1, "make_bios_readonly\n");
++
++    //stack and RW variables in upper memory, needs to be writeable
++    // if (CONFIG_WRITABLE_UPPERMEMORY)
++    if (! CONFIG_MALLOC_UPPERMEMORY) {
++        dprintf(1, "TODO UMC\n");
++        make_bios_readonly_umc();
++    }
++
++    //TODO test
++    return;
++    // make_bios_readonly_finali();
++
++    u16 bdf;
++    u8 val;
++
++    // bdf = pci_to_bdf(0, 0x10, 0);
++    // val = pci_config_readb(bdf, 0x54);
++    // val |= 0xff;  //all shadow
++    // pci_config_writeb(bdf, 0x54, val);
++
++    bdf = pci_to_bdf(0, 0x10, 0);
++    val = pci_config_readb(bdf, 0x51);
++    val &= ~4;  //a-b write merge
++    pci_config_writeb(bdf, 0x51, val);
++
++
++	return;
+ 
+     if (ShadowBDF < 0) {
+         dprintf(1, "Unable to lock ram - bridge not found\n");
+-- 
+2.46.1
+

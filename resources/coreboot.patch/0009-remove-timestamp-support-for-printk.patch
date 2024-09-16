@@ -1,0 +1,46 @@
+From 2166d88482edfe9ac1db671392f5ca5deef39ca5 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:33:10 +0200
+Subject: [PATCH 09/26] remove timestamp support for printk
+
+no TSC
+---
+ src/console/printk.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/console/printk.c b/src/console/printk.c
+index 99710e60be..43d4ca7330 100644
+--- a/src/console/printk.c
++++ b/src/console/printk.c
+@@ -17,21 +17,28 @@ DECLARE_SPIN_LOCK(console_lock)
+ 
+ #define TRACK_CONSOLE_TIME (!ENV_SMM && CONFIG(HAVE_MONOTONIC_TIMER))
+ 
++#if 0
+ static struct mono_time mt_start, mt_stop;
++#endif
+ static long console_usecs;
+ 
+ static void console_time_run(void)
+ {
++	//TODO timery pc2005
++#if 0
+ 	if (TRACK_CONSOLE_TIME && boot_cpu())
+ 		timer_monotonic_get(&mt_start);
++#endif
+ }
+ 
+ static void console_time_stop(void)
+ {
++#if 0
+ 	if (TRACK_CONSOLE_TIME && boot_cpu()) {
+ 		timer_monotonic_get(&mt_stop);
+ 		console_usecs += mono_time_diff_microseconds(&mt_start, &mt_stop);
+ 	}
++#endif
+ }
+ 
+ void console_time_report(void)
+-- 
+2.46.1
+

@@ -1,0 +1,46 @@
+From 5f1492a09146d41c75f0a645094a8bc8b6e643fa Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:18:37 +0200
+Subject: [PATCH 02/27] Debug asserts
+
+Memory capacity return debug
+---
+ src/system.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/system.c b/src/system.c
+index 438e60e2..dbd72728 100644
+--- a/src/system.c
++++ b/src/system.c
+@@ -71,6 +71,9 @@ handle_1552(struct bregs *regs)
+ static void
+ handle_1587(struct bregs *regs)
+ {
++dprintf(3, "!!! handle_1587\n");
++
++
+     // +++ should probably have descriptor checks
+     // +++ should have exception handlers
+ 
+@@ -171,6 +174,9 @@ handle_1588(struct bregs *regs)
+ {
+     u32 rs = GET_GLOBAL(LegacyRamSize);
+ 
++dprintf(3, "XMS size %u\n", rs);
++
++
+     // According to Ralf Brown's interrupt the limit should be 15M,
+     // but real machines mostly return max. 63M.
+     if (rs > 64*1024*1024)
+@@ -268,6 +274,8 @@ handle_15e801(struct bregs *regs)
+ 
+     u32 rs = GET_GLOBAL(LegacyRamSize);
+ 
++dprintf(3, "XMS E801 size %u\n", rs);
++
+     // Get the amount of extended memory (above 1M)
+     if (rs > 16*1024*1024) {
+         // limit to 15M
+-- 
+2.46.1
+

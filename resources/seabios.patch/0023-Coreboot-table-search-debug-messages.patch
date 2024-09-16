@@ -1,0 +1,25 @@
+From 30204a333e409ab47de748caa524597debcecb83 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:37:37 +0200
+Subject: [PATCH 23/27] Coreboot table search debug messages
+
+---
+ vgasrc/cbvga.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/vgasrc/cbvga.c b/vgasrc/cbvga.c
+index b919137b..c199d56f 100644
+--- a/vgasrc/cbvga.c
++++ b/vgasrc/cbvga.c
+@@ -230,7 +230,7 @@ cbvga_setup(void)
+ 
+     struct cb_header *cbh = find_cb_table();
+     if (!cbh) {
+-        dprintf(1, "Unable to find coreboot table\n");
++        dprintf(1, "CBVGA Unable to find coreboot table\n");
+         return -1;
+     }
+     struct cb_framebuffer *cbfb = find_cb_subtable(cbh, CB_TAG_FRAMEBUFFER);
+-- 
+2.46.1
+

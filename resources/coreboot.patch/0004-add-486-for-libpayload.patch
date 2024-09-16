@@ -1,0 +1,3923 @@
+From 2667cc1e35c39cd97a3c92a46c23efde0179b045 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 04:49:01 +0200
+Subject: [PATCH 04/26] add 486 for libpayload
+
+probably unusable with 128kB ROM chips
+---
+ payloads/libpayload/Kconfig                   |  31 +-
+ payloads/libpayload/Makefile                  |   2 +
+ payloads/libpayload/Makefile.inc              |   7 +-
+ payloads/libpayload/Makefile.payload          |   2 +-
+ payloads/libpayload/arch/486/Kconfig          |  52 +++
+ payloads/libpayload/arch/486/Makefile.inc     |  50 +++
+ payloads/libpayload/arch/486/apic.c           | 332 ++++++++++++++++++
+ payloads/libpayload/arch/486/boot_media.c     |  14 +
+ payloads/libpayload/arch/486/cache.c          | 134 +++++++
+ payloads/libpayload/arch/486/coreboot.c       |  62 ++++
+ payloads/libpayload/arch/486/delay.c          |  60 ++++
+ payloads/libpayload/arch/486/exception.c      | 237 +++++++++++++
+ payloads/libpayload/arch/486/exception_asm.S  | 320 +++++++++++++++++
+ payloads/libpayload/arch/486/exec.S           |  83 +++++
+ payloads/libpayload/arch/486/gdb.c            |  89 +++++
+ payloads/libpayload/arch/486/head.S           | 143 ++++++++
+ .../libpayload/arch/486/libpayload.ldscript   |  86 +++++
+ payloads/libpayload/arch/486/main.c           |  81 +++++
+ payloads/libpayload/arch/486/multiboot.c      | 127 +++++++
+ payloads/libpayload/arch/486/rom_media.c      | 110 ++++++
+ payloads/libpayload/arch/486/selfboot.c       |  34 ++
+ payloads/libpayload/arch/486/string.c         |  94 +++++
+ payloads/libpayload/arch/486/sysinfo.c        |  87 +++++
+ payloads/libpayload/arch/486/timer.c          | 190 ++++++++++
+ payloads/libpayload/arch/486/util.S           |  37 ++
+ payloads/libpayload/arch/486/virtual.c        |  36 ++
+ payloads/libpayload/bin/lpgcc                 |   6 +
+ payloads/libpayload/configs/defconfig         | 113 +++++-
+ .../libpayload/configs/defconfig-tinycurses   |   4 +-
+ payloads/libpayload/drivers/usb/Kconfig       |   4 +-
+ payloads/libpayload/include/486/arch/apic.h   |  46 +++
+ .../libpayload/include/486/arch/barrier.h     |  37 ++
+ payloads/libpayload/include/486/arch/cache.h  |  51 +++
+ payloads/libpayload/include/486/arch/cpuid.h  | 102 ++++++
+ .../libpayload/include/486/arch/exception.h   |  93 +++++
+ payloads/libpayload/include/486/arch/io.h     | 160 +++++++++
+ payloads/libpayload/include/486/arch/msr.h    |  57 +++
+ payloads/libpayload/include/486/arch/rdtsc.h  |  41 +++
+ payloads/libpayload/include/486/arch/types.h  |  59 ++++
+ .../libpayload/include/486/arch/virtual.h     |  40 +++
+ payloads/libpayload/libc/Makefile.inc         |   2 +-
+ payloads/libpayload/libc/malloc.c             |  10 +-
+ payloads/libpayload/libc/time.c               |  28 +-
+ payloads/libpayload/tests/Makefile            |   4 +-
+ 44 files changed, 3300 insertions(+), 57 deletions(-)
+ create mode 100644 payloads/libpayload/arch/486/Kconfig
+ create mode 100644 payloads/libpayload/arch/486/Makefile.inc
+ create mode 100644 payloads/libpayload/arch/486/apic.c
+ create mode 100644 payloads/libpayload/arch/486/boot_media.c
+ create mode 100644 payloads/libpayload/arch/486/cache.c
+ create mode 100644 payloads/libpayload/arch/486/coreboot.c
+ create mode 100644 payloads/libpayload/arch/486/delay.c
+ create mode 100644 payloads/libpayload/arch/486/exception.c
+ create mode 100644 payloads/libpayload/arch/486/exception_asm.S
+ create mode 100644 payloads/libpayload/arch/486/exec.S
+ create mode 100644 payloads/libpayload/arch/486/gdb.c
+ create mode 100644 payloads/libpayload/arch/486/head.S
+ create mode 100644 payloads/libpayload/arch/486/libpayload.ldscript
+ create mode 100644 payloads/libpayload/arch/486/main.c
+ create mode 100644 payloads/libpayload/arch/486/multiboot.c
+ create mode 100644 payloads/libpayload/arch/486/rom_media.c
+ create mode 100644 payloads/libpayload/arch/486/selfboot.c
+ create mode 100644 payloads/libpayload/arch/486/string.c
+ create mode 100644 payloads/libpayload/arch/486/sysinfo.c
+ create mode 100644 payloads/libpayload/arch/486/timer.c
+ create mode 100644 payloads/libpayload/arch/486/util.S
+ create mode 100644 payloads/libpayload/arch/486/virtual.c
+ create mode 100644 payloads/libpayload/include/486/arch/apic.h
+ create mode 100644 payloads/libpayload/include/486/arch/barrier.h
+ create mode 100644 payloads/libpayload/include/486/arch/cache.h
+ create mode 100644 payloads/libpayload/include/486/arch/cpuid.h
+ create mode 100644 payloads/libpayload/include/486/arch/exception.h
+ create mode 100644 payloads/libpayload/include/486/arch/io.h
+ create mode 100644 payloads/libpayload/include/486/arch/msr.h
+ create mode 100644 payloads/libpayload/include/486/arch/rdtsc.h
+ create mode 100644 payloads/libpayload/include/486/arch/types.h
+ create mode 100644 payloads/libpayload/include/486/arch/virtual.h
+
+diff --git a/payloads/libpayload/Kconfig b/payloads/libpayload/Kconfig
+index fcef18a7f0..9917fb3818 100644
+--- a/payloads/libpayload/Kconfig
++++ b/payloads/libpayload/Kconfig
+@@ -104,7 +104,7 @@ menu "Architecture Options"
+ 
+ choice
+         prompt "Target Architecture"
+-        default ARCH_X86
++        default ARCH_486
+ 
+ config ARCH_ARM
+         bool "ARM"
+@@ -116,6 +116,11 @@ config ARCH_X86
+         help
+           Support the x86 architecture
+ 
++config ARCH_486
++        bool "486"
++        help
++          Support the x86 architecture
++
+ config ARCH_ARM64
+         bool "ARM64"
+         help
+@@ -133,7 +138,7 @@ endchoice
+ 
+ config MULTIBOOT
+ 	bool "Multiboot header support"
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	default y if !CHROMEOS
+ 
+ config HEAP_SIZE
+@@ -157,7 +162,7 @@ config BASE_ADDRESS
+ 	hex "Base address"
+ 	default 0x04000000 if ARCH_ARM
+ 	default 0x80100000 if ARCH_ARM64
+-	default 0x00100000 if ARCH_X86
++	default 0x00100000 if ARCH_X86 || ARCH_486
+ 	default 0x00000000 if ARCH_MOCK
+ 	help
+ 	  This is the base address for the payload.
+@@ -250,7 +255,7 @@ config SERIAL_CONSOLE
+ config 8250_SERIAL_CONSOLE
+ 	bool "8250-compatible serial port driver (including IO and MMIO)"
+ 	depends on SERIAL_CONSOLE
+-	default y if ARCH_X86
++	default y if ARCH_X86 || ARCH_486
+ 
+ config S5P_SERIAL_CONSOLE
+ 	bool "Exynos SOC, S5P compatible serial port driver"
+@@ -285,7 +290,7 @@ config PL011_SERIAL_CONSOLE
+ config SERIAL_IOBASE
+ 	## This default is currently not used on non-x86 systems.
+ 	hex "Default I/O base for the serial port (default 0x3f8)"
+-	depends on SERIAL_CONSOLE && ARCH_X86
++	depends on SERIAL_CONSOLE && (ARCH_X86 || ARCH_486)
+ 	default 0x3f8
+ 
+ config SERIAL_SET_SPEED
+@@ -318,7 +323,7 @@ config VIDEO_CONSOLE
+ 
+ config VGA_VIDEO_CONSOLE
+ 	bool "VGA video console driver"
+-	depends on ARCH_X86 && VIDEO_CONSOLE
++	depends on (ARCH_X86 || ARCH_486) && VIDEO_CONSOLE
+ 	default y if !CHROMEOS
+ 
+ config GEODELX_VIDEO_CONSOLE
+@@ -373,14 +378,14 @@ config PC_I8042
+ config PC_MOUSE
+ 	bool "Allow input from a PC mouse"
+ 	default n if CHROMEOS
+-	default y if ARCH_X86 # uses IO
++	default y if (ARCH_X86 || ARCH_486) # uses IO
+ 	default n
+ 	help
+ 	  PS/2 mouse driver on top of PC_I8042.
+ 
+ config PC_KEYBOARD
+ 	bool "Allow input from a PC keyboard"
+-	default y if ARCH_X86 # uses IO
++	default y if (ARCH_X86 || ARCH_486) # uses IO
+ 	default n
+ 
+ config PC_KEYBOARD_LAYOUT_US
+@@ -404,13 +409,13 @@ menu "Drivers"
+ 
+ config PCI
+ 	bool "Support for PCI devices"
+-	default y if ARCH_X86
++	default y if ARCH_X86 || ARCH_486
+ 	default n
+ 
+ config PCI_IO_OPS
+ 	bool "Support for PCI devices with port IO"
+ 	depends on PCI && IO_ADDRESS_SPACE
+-	default y if ARCH_X86
++	default y if ARCH_X86 || ARCH_486
+ 	default n
+ 
+ config PCIE_MEDIATEK
+@@ -425,7 +430,7 @@ config PCIE_QCOM
+ 
+ config NVRAM
+ 	bool "Support for reading/writing NVRAM bytes"
+-	depends on ARCH_X86 # for now
++	depends on ARCH_X86 || ARCH_486 # for now
+ 	default y
+ 
+ config MOUSE_CURSOR
+@@ -457,7 +462,7 @@ config RTC_PORT_EXTENDED_VIA
+ 
+ config SPEAKER
+ 	bool "Support for PC speaker"
+-	depends on ARCH_X86
++	depends on ARCH_X86 || ARCH_486
+ 	default y if !CHROMEOS
+ 
+ source "drivers/timer/Kconfig"
+@@ -503,5 +508,5 @@ config IO_ADDRESS_SPACE
+ 
+ source "arch/arm/Kconfig"
+ source "arch/arm64/Kconfig"
+-source "arch/x86/Kconfig"
++source "arch/486/Kconfig"
+ source "arch/mock/Kconfig"
+diff --git a/payloads/libpayload/Makefile b/payloads/libpayload/Makefile
+index 0104a11fbc..4a80607b51 100644
+--- a/payloads/libpayload/Makefile
++++ b/payloads/libpayload/Makefile
+@@ -110,6 +110,7 @@ include $(HAVE_DOTCONFIG)
+ ARCHDIR-$(CONFIG_LP_ARCH_ARM)     := arm
+ ARCHDIR-$(CONFIG_LP_ARCH_ARM64)   := arm64
+ ARCHDIR-$(CONFIG_LP_ARCH_X86)     := x86
++ARCHDIR-$(CONFIG_LP_ARCH_486)     := 486
+ ARCHDIR-$(CONFIG_LP_ARCH_MOCK)    := mock
+ 
+ ARCH-y := $(ARCHDIR-y)
+@@ -119,6 +120,7 @@ ARCH-y := $(ARCHDIR-y)
+ ARCH-$(CONFIG_LP_ARCH_ARM)     := arm
+ ARCH-$(CONFIG_LP_ARCH_ARM64)   := arm64
+ ARCH-$(CONFIG_LP_ARCH_X86)     := x86_32
++ARCH-$(CONFIG_LP_ARCH_486)     := x86_32
+ ARCH-$(CONFIG_LP_ARCH_MOCK)    := mock
+ 
+ # Five cases where we don't need fully populated $(obj) lists:
+diff --git a/payloads/libpayload/Makefile.inc b/payloads/libpayload/Makefile.inc
+index c511e12855..89802857c8 100644
+--- a/payloads/libpayload/Makefile.inc
++++ b/payloads/libpayload/Makefile.inc
+@@ -40,6 +40,7 @@ export KERNELVERSION      := 0.2.0
+ ARCHDIR-$(CONFIG_LP_ARCH_ARM)     := arm
+ ARCHDIR-$(CONFIG_LP_ARCH_ARM64)   := arm64
+ ARCHDIR-$(CONFIG_LP_ARCH_X86)     := x86
++ARCHDIR-$(CONFIG_LP_ARCH_486)     := 486
+ ARCHDIR-$(CONFIG_LP_ARCH_MOCK)    := mock
+ DESTDIR ?= install
+ 
+@@ -75,9 +76,9 @@ INCLUDES += -I$(VBOOT_SOURCE)/firmware/include
+ CFLAGS += $(INCLUDES) -Os -pipe -nostdinc -ggdb3
+ CFLAGS += -nostdlib -fno-builtin -ffreestanding -fomit-frame-pointer
+ CFLAGS += -ffunction-sections -fdata-sections
+-CFLAGS += -Wall -Wundef -Wstrict-prototypes -Wmissing-prototypes -Wvla
+-CFLAGS += -Wwrite-strings -Wredundant-decls -Wno-trigraphs -Wimplicit-fallthrough
+-CFLAGS += -Wstrict-aliasing -Wshadow -Werror
++CFLAGS += -Wundef -Wstrict-prototypes -Wmissing-prototypes -Wvla
++CFLAGS += -Wwrite-strings -Wredundant-decls -Wno-trigraphs -Wimplicit-fallthrough -Wno-error=sign-compare
++CFLAGS += -Wstrict-aliasing -Wshadow
+ 
+ ifeq ($(CONFIG_LP_LTO),y)
+ CFLAGS += -flto
+diff --git a/payloads/libpayload/Makefile.payload b/payloads/libpayload/Makefile.payload
+index fa98d8a4de..d58e79a8ed 100644
+--- a/payloads/libpayload/Makefile.payload
++++ b/payloads/libpayload/Makefile.payload
+@@ -38,7 +38,7 @@ CCACHE ?=
+ 
+ CFLAGS  = $(CFLAGS_$(ARCH))
+ CFLAGS += -Os -ffreestanding
+-CFLAGS += -Wall -Wextra -Wmissing-prototypes -Wvla -Werror
++CFLAGS += -Wextra -Wmissing-prototypes -Wvla 
+ 
+ STRIP ?= debug
+ 
+diff --git a/payloads/libpayload/arch/486/Kconfig b/payloads/libpayload/arch/486/Kconfig
+new file mode 100644
+index 0000000000..00013e6067
+--- /dev/null
++++ b/payloads/libpayload/arch/486/Kconfig
+@@ -0,0 +1,52 @@
++##
++##
++## Copyright (c) 2012 Google Inc.
++##
++## Redistribution and use in source and binary forms, with or without
++## modification, are permitted provided that the following conditions
++## are met:
++## 1. Redistributions of source code must retain the above copyright
++##    notice, this list of conditions and the following disclaimer.
++## 2. Redistributions in binary form must reproduce the above copyright
++##    notice, this list of conditions and the following disclaimer in the
++##    documentation and/or other materials provided with the distribution.
++## 3. The name of the author may not be used to endorse or promote products
++##    derived from this software without specific prior written permission.
++##
++## THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++## ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++## IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++## ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++## FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++## DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++## OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++## HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++## LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++## OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++## SUCH DAMAGE.
++##
++
++if ARCH_486
++
++config ARCH_SPECIFIC_OPTIONS
++	def_bool y
++	select LITTLE_ENDIAN
++	select IO_ADDRESS_SPACE
++
++choice
++	prompt "Interrupt Handling"
++	default LOG_UNKNOWN_INTERRUPTS if ENABLE_APIC
++	default DIE_ON_UNKNOWN_INTERRUPT
++
++config IGNORE_UNKNOWN_INTERRUPTS
++	bool "Ignore unknown user defined interrupts"
++
++config LOG_UNKNOWN_INTERRUPTS
++	bool "Logs unknown user defined interrupts to the console"
++
++config DIE_ON_UNKNOWN_INTERRUPT
++	bool "Die if an unknown user defined interrupt is encountered"
++
++endchoice
++
++endif
+diff --git a/payloads/libpayload/arch/486/Makefile.inc b/payloads/libpayload/arch/486/Makefile.inc
+new file mode 100644
+index 0000000000..1afde20ec2
+--- /dev/null
++++ b/payloads/libpayload/arch/486/Makefile.inc
+@@ -0,0 +1,50 @@
++##
++##
++## Copyright (C) 2008 Advanced Micro Devices, Inc.
++##
++## Redistribution and use in source and binary forms, with or without
++## modification, are permitted provided that the following conditions
++## are met:
++## 1. Redistributions of source code must retain the above copyright
++##    notice, this list of conditions and the following disclaimer.
++## 2. Redistributions in binary form must reproduce the above copyright
++##    notice, this list of conditions and the following disclaimer in the
++##    documentation and/or other materials provided with the distribution.
++## 3. The name of the author may not be used to endorse or promote products
++##    derived from this software without specific prior written permission.
++##
++## THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++## ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++## IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++## ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++## FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++## DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++## OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++## HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++## LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++## OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++## SUCH DAMAGE.
++##
++
++CFLAGS += -mpreferred-stack-boundary=2 -Wno-error=unused-parameter
++
++head.o-y += head.S
++libc-y += main.c sysinfo.c
++libc-y += timer.c coreboot.c util.S
++libc-y += exec.S virtual.c
++libc-y += selfboot.c cache.c
++libc-y += exception_asm.S exception.c
++libc-y += delay.c
++
++# Will fall back to default_memXXX() in libc/memory.c if GPL not allowed.
++libc-$(CONFIG_LP_GPL) += string.c
++
++libgdb-y += gdb.c
++
++libcbfs-$(CONFIG_LP_CBFS) += rom_media.c
++libcbfs-$(CONFIG_LP_CBFS) += boot_media.c
++
++# Multiboot support is configurable
++libc-$(CONFIG_LP_MULTIBOOT) += multiboot.c
++
++libc-$(CONFIG_LP_ENABLE_APIC) += apic.c
+diff --git a/payloads/libpayload/arch/486/apic.c b/payloads/libpayload/arch/486/apic.c
+new file mode 100644
+index 0000000000..e0671064c8
+--- /dev/null
++++ b/payloads/libpayload/arch/486/apic.c
+@@ -0,0 +1,332 @@
++/*
++ *
++ * Copyright 2018 Google LLC
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#include <libpayload.h>
++#include <arch/apic.h>
++#include <arch/cpuid.h>
++#include <arch/msr.h>
++#include <exception.h>
++
++#define APIC_BASE_MSR			0x0000001B
++#define APIC_BASE_MASK			(0xFFFFFFFULL << 12)
++
++#define CPUID_XAPIC_ENABLED_BIT		(1 << 9)
++#define CPUID_XAPIC2_ENABLED_BIT	(1 << 21)
++
++#define XAPIC_ENABLED_BIT		(1 << 11)
++#define X2APIC_ENABLED_BIT		(1 << 10)
++#define APIC_MASKED_BIT			(1 << 16)
++
++#define APIC_ID				0x020
++#define   APIC_ID_SHIFT			24
++#define   APIC_ID_MASK			(0xFFUL << APIC_ID_SHIFT)
++#define APIC_VERSION			0x030
++#define   APIC_MAX_LVT_SHIFT		16
++#define   APIC_MAX_LVT_MASK		(0xFFUL << APIC_MAX_LVT_SHIFT)
++#define APIC_TASK_PRIORITY		0x080
++#define   APIC_TASK_PRIORITY_MASK	0xFFUL
++#define APIC_EOI			0x0B0
++#define APIC_SPURIOUS			0x0F0
++#define   APIC_SW_ENABLED_BIT		(1 << 8)
++#define   APIC_SPURIOUS_VECTOR_MASK	0xFFUL
++#define APIC_SPURIOUS			0x0F0
++#define APIC_LVT_TIMER			0x320
++#define APIC_TIMER_INIT_COUNT		0x380
++#define APIC_TIMER_CUR_COUNT		0x390
++#define APIC_TIMER_DIV_CFG		0x3E0
++#define APIC_ISR_0			0x100
++#define APIC_ISR_OFFSET			0x010
++
++#define APIC_LVT_SIZE			0x010
++
++#define APIC_TIMER_VECTOR		0x20UL
++#define APIC_SPURIOUS_VECTOR		0xFFUL
++
++static uint32_t apic_bar;
++static int _apic_initialized;
++// TODO: Build a lookup table to avoid calculating it.
++static uint32_t ticks_per_ms;
++static volatile uint8_t timer_waiting;
++
++enum APIC_CAPABILITY {
++	DISABLED = 0,
++	XACPI = 1 << 0,
++	X2ACPI = 1 << 1
++};
++
++int apic_initialized(void)
++{
++	return _apic_initialized;
++}
++
++static inline uint32_t apic_read32(uint32_t offset)
++{
++	return read32((void *)(apic_bar + offset));
++}
++
++static inline void apic_write32(uint32_t offset, uint32_t value)
++{
++	write32((void *)(apic_bar + offset), value);
++}
++
++uint8_t apic_id(void)
++{
++	die_if(!apic_bar, "APIC is not initialized");
++
++	uint8_t id =
++		(apic_read32(APIC_ID) & APIC_ID_MASK) >> APIC_ID_SHIFT;
++
++	return id;
++}
++
++void apic_start_delay(unsigned int usec)
++{
++	die_if(!ticks_per_ms, "apic_init_timer was not run.");
++	die_if(timer_waiting, "timer already started.");
++	die_if(!interrupts_enabled(), "Interrupts disabled.");
++
++	/* The order is important so we don't underflow */
++	uint64_t ticks = usec * ticks_per_ms / USECS_PER_MSEC;
++
++	/* Not enough resolution */
++	if (!ticks)
++		return;
++
++	/* Disable interrupts so we don't get a race condition between
++	 * starting the timer and the hlt instruction. */
++	disable_interrupts();
++
++	timer_waiting = 1;
++
++	apic_write32(APIC_TIMER_INIT_COUNT, ticks);
++	enable_interrupts();
++}
++
++void apic_wait_delay(void)
++{
++	/* Loop in case another interrupt has fired and resumed execution. */
++	disable_interrupts();
++	/* Note: when we test timer_waiting, interrupts are disabled by the line
++	 * above and the cli below. */
++	while (timer_waiting) {
++		asm volatile(
++			"sti\n\t"
++			"hlt\n\t"
++			/* Disable interrupts to prevent a race condition
++			 * between checking timer_waiting and executing the hlt
++			 * instruction again. */
++			"cli\n\t");
++	}
++
++	/* Leave hardware interrupts enabled. */
++	enable_interrupts();
++}
++
++void apic_delay(unsigned int usec)
++{
++	apic_start_delay(usec);
++	apic_wait_delay();
++}
++
++static void timer_interrupt_handler(u8 vector)
++{
++	timer_waiting = 0;
++	apic_eoi(APIC_TIMER_VECTOR);
++}
++
++static void suprious_interrupt_handler(u8 vector) {}
++
++void apic_eoi(uint8_t vector)
++{
++	die_if(!apic_bar, "APIC is not initialized");
++
++	/*
++	 * Local and I/O APICs support 240 vectors (in the range of 16 to 255)
++	 * as valid interrupts.
++	 */
++	if (vector <= 15)
++		return;
++
++	/* Each bank handles 32 vectors */
++	uint8_t bank = vector / 32;
++
++	uint32_t offset = APIC_ISR_0 + bank * APIC_ISR_OFFSET;
++
++	uint32_t mask = apic_read32(offset);
++
++	uint8_t shift = vector % 32;
++
++	if (mask & (1 << shift))
++		apic_write32(APIC_EOI, 0);
++}
++
++static enum APIC_CAPABILITY apic_capabilities(void)
++{
++	uint32_t eax, ebx, ecx, edx;
++
++	cpuid(1, eax, ebx, ecx, edx);
++
++	enum APIC_CAPABILITY capabilities = DISABLED;
++
++	if (edx & CPUID_XAPIC_ENABLED_BIT)
++		capabilities |= XACPI;
++
++	if (ecx & CPUID_XAPIC2_ENABLED_BIT)
++		capabilities |= X2ACPI;
++
++	return capabilities;
++}
++
++static uint8_t apic_max_lvt_entries(void)
++{
++	die_if(!apic_bar, "APIC is not initialized");
++
++	uint32_t reg = apic_read32(APIC_VERSION);
++	reg &= APIC_MAX_LVT_MASK;
++	reg >>= APIC_MAX_LVT_SHIFT;
++
++	return (uint8_t)reg;
++}
++
++static void apic_reset_all_lvts(void)
++{
++	uint8_t max = apic_max_lvt_entries();
++	for (int i = 0; i <= max; ++i) {
++		uint32_t offset = APIC_LVT_TIMER + APIC_LVT_SIZE * i;
++		apic_eoi(i);
++		apic_write32(offset, APIC_MASKED_BIT);
++	}
++}
++
++static void apic_set_task_priority(uint8_t priority)
++{
++	die_if(!apic_bar, "APIC is not initialized");
++
++	uint32_t tpr = apic_read32(APIC_TASK_PRIORITY);
++	tpr &= ~APIC_TASK_PRIORITY_MASK;
++	tpr |= priority;
++
++	apic_write32(APIC_TASK_PRIORITY, priority);
++}
++
++static void apic_init_timer(void)
++{
++	die_if(!apic_bar, "APIC is not initialized");
++
++	apic_write32(APIC_LVT_TIMER, APIC_MASKED_BIT);
++
++	/* Divide the clock by 1. */
++	apic_write32(APIC_TIMER_DIV_CFG, 0xB);
++
++	/* Calibrate the APIC timer */
++	if (!ticks_per_ms) {
++		/* Set APIC init counter to MAX and count for 1 ms */
++		apic_write32(APIC_TIMER_INIT_COUNT, UINT32_MAX);
++
++		/* This is safe because apic_initialized() returns false so
++		 * arch_ndelay() falls back to a busy loop. */
++		mdelay(1);
++
++		ticks_per_ms =
++			UINT32_MAX - apic_read32(APIC_TIMER_CUR_COUNT);
++	}
++
++	/* Clear the count so we don't get any stale interrupts */
++	apic_write32(APIC_TIMER_INIT_COUNT, 0);
++
++	/* Unmask the timer and set the vector. */
++	apic_write32(APIC_LVT_TIMER, APIC_TIMER_VECTOR);
++}
++
++static void apic_sw_disable(void)
++{
++	uint32_t reg = apic_read32(APIC_SPURIOUS);
++
++	reg &= ~APIC_SW_ENABLED_BIT;
++	printf("%s: writing %#x to %#x\n", __func__, reg, APIC_SPURIOUS);
++
++	apic_write32(APIC_SPURIOUS, reg);
++}
++
++static void apic_sw_enable(void)
++{
++	uint32_t reg = apic_read32(APIC_SPURIOUS);
++	if (reg & APIC_SW_ENABLED_BIT)
++		return;
++
++	reg |= APIC_SW_ENABLED_BIT;
++
++	apic_write32(APIC_SPURIOUS, reg);
++}
++
++static void apic_setup_spurious(void)
++{
++	uint32_t reg = apic_read32(APIC_SPURIOUS);
++
++	reg &= ~APIC_SPURIOUS_VECTOR_MASK;
++
++	reg |= APIC_SPURIOUS_VECTOR;
++
++	apic_write32(APIC_SPURIOUS, reg);
++}
++
++void apic_init(void)
++{
++	uint64_t apic_bar_reg;
++
++	printf("APIC Init Started\n");
++
++	die_if(apic_initialized(), "APIC already initialized");
++	die_if(!(apic_capabilities() & XACPI), "APIC is not supported");
++
++	apic_bar_reg = _rdmsr(APIC_BASE_MSR);
++	printf("apic_bar_reg is 0x%llx\n", apic_bar_reg);
++
++	die_if(!(apic_bar_reg & XAPIC_ENABLED_BIT), "APIC is not enabled");
++	die_if(apic_bar_reg & X2APIC_ENABLED_BIT,
++	       "APIC is configured in x2APIC mode which is not supported");
++
++	apic_bar = (uint32_t)(apic_bar_reg & APIC_BASE_MASK);
++
++	apic_sw_disable();
++	apic_reset_all_lvts();
++	apic_set_task_priority(0);
++	apic_setup_spurious();
++
++	apic_sw_enable();
++
++	apic_init_timer();
++
++	set_interrupt_handler(APIC_TIMER_VECTOR, &timer_interrupt_handler);
++	set_interrupt_handler(APIC_SPURIOUS_VECTOR,
++			      &suprious_interrupt_handler);
++
++	_apic_initialized = 1;
++
++	printf("APIC Configured\n");
++}
+diff --git a/payloads/libpayload/arch/486/boot_media.c b/payloads/libpayload/arch/486/boot_media.c
+new file mode 100644
+index 0000000000..07e08b6134
+--- /dev/null
++++ b/payloads/libpayload/arch/486/boot_media.c
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++
++#include <libpayload.h>
++#include <boot_device.h>
++
++__attribute__((weak)) ssize_t boot_device_read(void *buf, size_t offset, size_t size)
++{
++	/* Memory-mapping usually only works for the top 16MB. */
++	if (!lib_sysinfo.boot_media_size || lib_sysinfo.boot_media_size - offset > 16 * MiB)
++		return CB_ERR_ARG;
++	const void *const ptr = phys_to_virt(0 - lib_sysinfo.boot_media_size + offset);
++	memcpy(buf, ptr, size);
++	return size;
++}
+diff --git a/payloads/libpayload/arch/486/cache.c b/payloads/libpayload/arch/486/cache.c
+new file mode 100644
+index 0000000000..9fb33bc2b8
+--- /dev/null
++++ b/payloads/libpayload/arch/486/cache.c
+@@ -0,0 +1,134 @@
++/*
++ *
++ * Copyright 2022 Google LLC
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#include <stdint.h>
++
++#include <arch/cache.h>
++#include <arch/cpuid.h>
++
++unsigned int dcache_line_bytes(void)
++{
++	/*
++	 * The value returned in EBX[15:8] is in 8-byte increments.
++	 * Cache line size is EBX[15:8] * 8
++	 */
++	return (cpuid_ebx(1) & 0xff00) >> 5;
++}
++
++static inline int cpu_supports_wbnoinvd(void)
++{
++	return (cpuid_ebx(0x80000008) >> 9) & 1;
++}
++
++static inline int cpu_supports_clwb(void)
++{
++	return (cpuid_ebx(7) >> 24) & 1;
++}
++
++static inline int cpu_supports_clflushopt(void)
++{
++	return (cpuid_sub_leaf_ebx(7, 0) >> 23) & 1;
++}
++
++static inline int cpu_supports_clflush(void)
++{
++	return (cpuid_ebx(1) >> 19) & 1;
++}
++
++inline void dcache_invalidate_all(void)
++{
++	asm volatile("invd" ::: "memory");
++}
++
++inline void dcache_clean_invalidate_all(void)
++{
++	asm volatile("wbinvd" ::: "memory");
++}
++
++inline void dcache_clean_all(void)
++{
++	if (cpu_supports_wbnoinvd()) {
++		asm volatile(
++			"sfence\n\t"
++			"wbnoinvd\n\t"
++		::: "memory");
++	} else {
++		dcache_clean_invalidate_all();
++	}
++}
++
++void dcache_clean_by_mva(void const *addr, size_t len)
++{
++	unsigned long line, linesize;
++
++	linesize = dcache_line_bytes();
++	line = (uintptr_t)addr & ~(linesize - 1);
++
++	if (cpu_supports_clwb()) {
++		asm volatile("sfence");
++		while (line < (uintptr_t)addr + len) {
++			asm volatile("clwb (%0)" : : "r"(line) : "memory");
++			line += linesize;
++		}
++	} else {
++		dcache_clean_invalidate_by_mva(addr, len);
++	}
++}
++
++void dcache_invalidate_by_mva(void const *addr, size_t len)
++{
++	/*
++	 * x86 doesn't have a "invalidate without clean" for a cache line, fall
++	 * back to both.
++	 */
++	dcache_clean_invalidate_by_mva(addr, len);
++}
++
++void dcache_clean_invalidate_by_mva(void const *addr, size_t len)
++{
++	unsigned long line, linesize;
++
++	linesize = dcache_line_bytes();
++	line = (uintptr_t)addr & ~(linesize - 1);
++
++	if (cpu_supports_clflushopt()) {
++		asm volatile("sfence");
++		while (line < (uintptr_t)addr + len) {
++			asm volatile("clflushopt (%0)" ::"r"(line) : "memory");
++			line += linesize;
++		}
++	} else if (cpu_supports_clflush()) {
++		asm volatile("sfence");
++		while (line < (uintptr_t)addr + len) {
++			asm volatile("clflush (%0)" : : "r"(line) : "memory");
++			line += linesize;
++		}
++	} else {
++		dcache_clean_invalidate_all();
++	}
++}
+diff --git a/payloads/libpayload/arch/486/coreboot.c b/payloads/libpayload/arch/486/coreboot.c
+new file mode 100644
+index 0000000000..3e3e526d6d
+--- /dev/null
++++ b/payloads/libpayload/arch/486/coreboot.c
+@@ -0,0 +1,62 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ * Copyright (C) 2009 coresystems GmbH
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#include <libpayload-config.h>
++#include <libpayload.h>
++#include <coreboot_tables.h>
++
++/*
++ * Some of this is x86 specific, and the rest of it is generic. Right now,
++ * since we only support x86, we'll avoid trying to make lots of infrastructure
++ * we don't need. If in the future, we want to use coreboot on some other
++ * architecture, then take out the generic parsing code and move it elsewhere.
++ */
++
++/* === Parsing code === */
++/* This is the generic parsing code. */
++
++int cb_parse_arch_specific(struct cb_record *rec, struct sysinfo_t *info)
++{
++	return 0;
++}
++
++int get_coreboot_info(struct sysinfo_t *info)
++{
++	int ret;
++
++	/* Ensure the variable range MTRR index covering the ROM is set to
++	 * an invalid value. */
++
++	ret = cb_parse_header(phys_to_virt(0x00000000), 0x1000, info);
++
++	if (ret)
++		ret = cb_parse_header(phys_to_virt(0x000f0000), 0x1000, info);
++
++	return ret;
++}
+diff --git a/payloads/libpayload/arch/486/delay.c b/payloads/libpayload/arch/486/delay.c
+new file mode 100644
+index 0000000000..59cbbba775
+--- /dev/null
++++ b/payloads/libpayload/arch/486/delay.c
+@@ -0,0 +1,60 @@
++/*
++ *
++ * Copyright (C) 2018 Google LLC
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#include <libpayload.h>
++#include <arch/apic.h>
++
++/* The pause instruction can delay 10-140 CPU cycles, so avoid calling it when
++ * getting close to finishing. Depending on the timer source, the timer can be
++ * running at CPU frequency, bus frequency, or some arbitrary value. We assume
++ * that the timer is running at the CPU frequency. */
++#define PAUSE_THRESHOLD_TICKS		150
++
++/* Let's assume APIC interrupts take at least 100us */
++#define APIC_INTERRUPT_LATENCY_NS	(100 * NSECS_PER_USEC)
++
++void arch_ndelay(uint64_t ns)
++{
++	uint64_t delta = ns * timer_hz() / NSECS_PER_SEC;
++	uint64_t pause_delta = 0;
++	uint64_t apic_us = 0;
++
++	if (ns > APIC_INTERRUPT_LATENCY_NS)
++		apic_us = (ns - APIC_INTERRUPT_LATENCY_NS) / NSECS_PER_USEC;
++
++	if (CONFIG(LP_ENABLE_APIC) && apic_initialized() && apic_us)
++		apic_delay(apic_us);
++
++	if (delta > PAUSE_THRESHOLD_TICKS)
++		pause_delta = delta - PAUSE_THRESHOLD_TICKS;
++
++	for (uint64_t t=0;t< (ns >> 3);t++) {
++		asm volatile("pause\n\t");
++	}
++
++}
+diff --git a/payloads/libpayload/arch/486/exception.c b/payloads/libpayload/arch/486/exception.c
+new file mode 100644
+index 0000000000..23d1b05b9a
+--- /dev/null
++++ b/payloads/libpayload/arch/486/exception.c
+@@ -0,0 +1,237 @@
++/*
++ *
++ * Copyright 2013 Google Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#include <arch/exception.h>
++#include <exception.h>
++#include <libpayload.h>
++#include <stdint.h>
++#include <arch/apic.h>
++
++#define IF_FLAG				(1 << 9)
++
++u32 exception_stack[0x400] __attribute__((aligned(8)));
++
++static interrupt_handler handlers[256];
++
++static const char *names[EXC_COUNT] = {
++	[EXC_DE]  = "Divide by Zero",
++	[EXC_DB]  = "Debug",
++	[EXC_NMI] = "Non-Maskable-Interrupt",
++	[EXC_BP]  = "Breakpoint",
++	[EXC_OF]  = "Overflow",
++	[EXC_BR]  = "Bound Range",
++	[EXC_UD]  = "Invalid Opcode",
++	[EXC_NM]  = "Device Not Available",
++	[EXC_DF]  = "Double Fault",
++	[EXC_TS]  = "Invalid TSS",
++	[EXC_NP]  = "Segment Not Present",
++	[EXC_SS]  = "Stack Fault",
++	[EXC_GP]  = "General Protection Fault",
++	[EXC_PF]  = "Page Fault",
++	[EXC_MF]  = "x87 Floating Point",
++	[EXC_AC]  = "Alignment Check",
++	[EXC_MC]  = "Machine Check",
++	[EXC_XF]  = "SIMD Floating Point",
++	[EXC_SX]  = "Security",
++};
++
++static void print_segment_error_code(u32 code)
++{
++	printf("%#x - descriptor %#x in the ", code, (code >> 3) & 0x1FFF);
++	if (code & (0x1 << 1)) {
++		printf("IDT");
++	} else {
++		if (code & 0x04)
++			printf("LDT");
++		else
++			printf("GDT");
++	}
++	if (code & (0x1 << 0))
++		printf(", external to the CPU");
++	else
++		printf(", internal to the CPU");
++}
++
++static void print_page_fault_error_code(u32 code)
++{
++	printf("%#x -", code);
++	if (code & (0x1 << 0))
++		printf(" page protection");
++	else
++		printf(" page not present");
++	if (code & (0x1 << 1))
++		printf(", write");
++	else
++		printf(", read");
++	if (code & (0x1 << 2))
++		printf(", user");
++	else
++		printf(", supervisor");
++	if (code & (0x1 << 3))
++		printf(", reserved bits set");
++	if (code & (0x1 << 4))
++		printf(", instruction fetch");
++}
++
++static void print_raw_error_code(u32 code)
++{
++	printf("%#x", code);
++}
++
++static void dump_stack(uintptr_t addr, size_t bytes)
++{
++	int i, j;
++	const int line = 8;
++	uint32_t *ptr = (uint32_t *)(addr & ~(line * sizeof(*ptr) - 1));
++
++	printf("Dumping stack:\n");
++	for (i = bytes / sizeof(*ptr); i >= 0; i -= line) {
++		printf("%p: ", ptr + i);
++		for (j = i; j < i + line; j++)
++			printf("%08x ", *(ptr + j));
++		printf("\n");
++	}
++}
++
++static void dump_exception_state(void)
++{
++	printf("%s Exception\n", names[exception_state->vector]);
++
++	printf("Error code: ");
++	switch (exception_state->vector) {
++	case EXC_PF:
++		print_page_fault_error_code(exception_state->error_code);
++		break;
++	case EXC_TS:
++	case EXC_NP:
++	case EXC_SS:
++	case EXC_GP:
++		print_segment_error_code(exception_state->error_code);
++		break;
++	case EXC_DF:
++	case EXC_AC:
++	case EXC_SX:
++		print_raw_error_code(exception_state->error_code);
++		break;
++	default:
++		printf("n/a");
++		break;
++	}
++	printf("\n");
++	printf("EIP:    0x%08x\n", exception_state->regs.eip);
++	printf("CS:     0x%04x\n", exception_state->regs.cs);
++	printf("EFLAGS: 0x%08x\n", exception_state->regs.eflags);
++	printf("EAX:    0x%08x\n", exception_state->regs.eax);
++	printf("ECX:    0x%08x\n", exception_state->regs.ecx);
++	printf("EDX:    0x%08x\n", exception_state->regs.edx);
++	printf("EBX:    0x%08x\n", exception_state->regs.ebx);
++	printf("ESP:    0x%08x\n", exception_state->regs.esp);
++	printf("EBP:    0x%08x\n", exception_state->regs.ebp);
++	printf("ESI:    0x%08x\n", exception_state->regs.esi);
++	printf("EDI:    0x%08x\n", exception_state->regs.edi);
++	printf("DS:     0x%04x\n", exception_state->regs.ds);
++	printf("ES:     0x%04x\n", exception_state->regs.es);
++	printf("SS:     0x%04x\n", exception_state->regs.ss);
++	printf("FS:     0x%04x\n", exception_state->regs.fs);
++	printf("GS:     0x%04x\n", exception_state->regs.gs);
++}
++
++void exception_dispatch(void)
++{
++	die_if(exception_state->vector >= ARRAY_SIZE(handlers),
++	       "Invalid vector %u\n", exception_state->vector);
++
++	u8 vec = exception_state->vector;
++
++	if (handlers[vec]) {
++		handlers[vec](vec);
++		goto success;
++	} else if (vec >= EXC_COUNT
++		   && CONFIG(LP_IGNORE_UNKNOWN_INTERRUPTS)) {
++		goto success;
++	} else if (vec >= EXC_COUNT
++		   && CONFIG(LP_LOG_UNKNOWN_INTERRUPTS)) {
++		printf("Ignoring interrupt vector %u\n", vec);
++		goto success;
++	}
++
++	die_if(vec >= EXC_COUNT || !names[vec], "Bad exception vector %u\n",
++	       vec);
++
++	dump_exception_state();
++	dump_stack(exception_state->regs.esp, 512);
++	/* We don't call apic_eoi because we don't want to ack the interrupt and
++	   allow another interrupt to wake the processor. */
++	halt();
++	return;
++
++success:
++	if (CONFIG(LP_ENABLE_APIC))
++		apic_eoi(vec);
++}
++
++void exception_init(void)
++{
++	exception_stack_end = exception_stack + ARRAY_SIZE(exception_stack);
++	exception_init_asm();
++}
++
++void set_interrupt_handler(u8 vector, interrupt_handler handler)
++{
++	handlers[vector] = handler;
++}
++
++static uint32_t eflags(void)
++{
++	uint32_t eflags;
++	asm volatile(
++		"pushf\n\t"
++		"pop %0\n\t"
++	: "=rm" (eflags));
++	return eflags;
++}
++
++void enable_interrupts(void)
++{
++	asm volatile (
++		"sti\n"
++		: : : "cc"
++	);
++}
++void disable_interrupts(void)
++{
++	asm volatile (
++		"cli\n"
++		: : : "cc"
++	);
++}
++
++int interrupts_enabled(void)
++{
++	return !!(eflags() & IF_FLAG);
++}
+diff --git a/payloads/libpayload/arch/486/exception_asm.S b/payloads/libpayload/arch/486/exception_asm.S
+new file mode 100644
+index 0000000000..b3395d0e4b
+--- /dev/null
++++ b/payloads/libpayload/arch/486/exception_asm.S
+@@ -0,0 +1,320 @@
++/*
++ *
++ * Copyright 2013 Google Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++	.align 4
++	.global exception_stack_end
++exception_stack_end:
++	.long 0
++	.global exception_state
++exception_state:
++	.long 0
++
++/* Some temporary variables which are used while saving exception state. */
++vector:
++	.long 0
++error_code:
++	.long 0
++old_esp:
++	.long 0
++old_eax:
++	.long 0
++
++	.align 8
++
++/*
++ * Each exception vector has a small stub associated with it which sets aside
++ * the error code, if any, records which vector we entered from, and calls
++ * the common exception entry point. Some exceptions have error codes and some
++ * don't, so we have a macro for each type.
++ */
++
++	.macro stub num
++exception_stub_\num:
++	movl	$0, error_code
++	movl	$\num, vector
++	jmp	exception_common
++	.endm
++
++	.macro stub_err num
++exception_stub_\num:
++	popl	error_code
++	movl	$\num, vector
++	jmp	exception_common
++	.endm
++
++	.altmacro
++	.macro	user_defined_stubs from, to
++	stub	\from
++	.if	\to-\from
++	user_defined_stubs	%(from+1),\to
++	.endif
++	.endm
++
++	stub 0
++	stub 1
++	stub 2
++	stub 3
++	stub 4
++	stub 5
++	stub 6
++	stub 7
++	stub_err 8
++	stub 9
++	stub_err 10
++	stub_err 11
++	stub_err 12
++	stub_err 13
++	stub_err 14
++	stub 15
++	stub 16
++	stub_err 17
++	stub 18
++	stub 19
++	stub 20
++	stub 21
++	stub 22
++	stub 23
++	stub 24
++	stub 25
++	stub 26
++	stub 27
++	stub 28
++	stub 29
++	stub_err 30
++	stub 31
++	/* Split the macro so we avoid a stack overflow. */
++	user_defined_stubs 32, 63
++	user_defined_stubs 64, 127
++	user_defined_stubs 128, 191
++	user_defined_stubs 192, 255
++
++exception_common:
++	/*
++	 * Save off the stack pointer and old eax value and install the
++	 * exception stack. eax points to the old stack which has the
++	 * exception ip, cs, and flags.
++	 */
++	mov	%esp, old_esp
++	addl	$12, old_esp
++	mov	%eax, old_eax
++	mov	%esp, %eax
++	mov	exception_stack_end, %esp
++
++	/*
++	 * Push values onto the top of the exception stack to form an
++	 * exception state structure.
++	 */
++	pushl	vector
++	pushl	error_code
++	pushl	%gs
++	pushl	%fs
++	pushl	%es
++	pushl	%ds
++	pushl	%ss
++	pushl	4(%eax)
++	pushl	8(%eax)
++	pushl	(%eax)
++	pushl	%edi
++	pushl	%esi
++	pushl	%ebp
++	pushl	old_esp
++	pushl	%ebx
++	pushl	%edx
++	pushl	%ecx
++	pushl	old_eax
++
++	/*
++	 * Call the C exception handler. It will find the exception state
++	 * using the exception_state global pointer. Not
++	 * passing parameters means we don't have to worry about what ABI
++	 * is being used.
++	 */
++	mov	%esp, exception_state
++	call	exception_dispatch
++
++	/*
++	 * Restore state from the exception state structure, including any
++	 * changes that might have been made.
++	 */
++	popl	old_eax
++	popl	%ecx
++	popl	%edx
++	popl	%ebx
++	popl	old_esp
++
++	mov	old_esp, %eax
++	subl	$12, %eax
++
++	popl	%ebp
++	popl	%esi
++	popl	%edi
++	popl	(%eax)
++	popl	8(%eax)
++	popl	4(%eax)
++	popl	%ss
++	popl	%ds
++	popl	%es
++	popl	%fs
++	popl	%gs
++
++	mov	%eax, %esp
++	mov	old_eax, %eax
++
++	/* Return from the exception. */
++	iretl
++
++/*
++ * We need segment selectors for the IDT, so we need to know where things are
++ * in the GDT. We set one up here which is pretty standard and largely copied
++ * from coreboot.
++ */
++	.align 8
++gdt:
++	/* selgdt 0, unused */
++	.word 0x0000, 0x0000
++	.byte 0x00, 0x00, 0x00, 0x00
++
++	/* selgdt 8, unused */
++	.word 0x0000, 0x0000
++	.byte 0x00, 0x00, 0x00, 0x00
++
++	/* selgdt 0x10, flat 4GB code segment */
++        .word 0xffff, 0x0000
++	.byte 0x00, 0x9b, 0xcf, 0x00
++
++	/* selgdt 0x18, flat 4GB data segment */
++	.word 0xffff, 0x0000
++	.byte 0x00, 0x93, 0xcf, 0x00
++gdt_end:
++
++/* GDT pointer for use with lgdt */
++gdt_ptr:
++	.word	gdt_end - gdt - 1
++	.long	gdt
++
++	/*
++	 * Record the target and construct the actual entry at init time. This
++	 * is necessary because the linker doesn't want to construct the entry
++	 * for us.
++	 */
++	.macro interrupt_gate target
++	.long \target
++	.long \target
++	.endm
++
++	.altmacro
++	.macro	user_defined_gates from, to
++	interrupt_gate	exception_stub_\from
++	.if	\to-\from
++	user_defined_gates	%(from+1),\to
++	.endif
++	.endm
++
++	.align 8
++	.global	idt
++idt:
++	interrupt_gate exception_stub_0
++	interrupt_gate exception_stub_1
++	interrupt_gate exception_stub_2
++	interrupt_gate exception_stub_3
++	interrupt_gate exception_stub_4
++	interrupt_gate exception_stub_5
++	interrupt_gate exception_stub_6
++	interrupt_gate exception_stub_7
++	interrupt_gate exception_stub_8
++	interrupt_gate exception_stub_9
++	interrupt_gate exception_stub_10
++	interrupt_gate exception_stub_11
++	interrupt_gate exception_stub_12
++	interrupt_gate exception_stub_13
++	interrupt_gate exception_stub_14
++	interrupt_gate exception_stub_15
++	interrupt_gate exception_stub_16
++	interrupt_gate exception_stub_17
++	interrupt_gate exception_stub_18
++	interrupt_gate exception_stub_19
++	interrupt_gate exception_stub_20
++	interrupt_gate exception_stub_21
++	interrupt_gate exception_stub_22
++	interrupt_gate exception_stub_23
++	interrupt_gate exception_stub_24
++	interrupt_gate exception_stub_25
++	interrupt_gate exception_stub_26
++	interrupt_gate exception_stub_27
++	interrupt_gate exception_stub_28
++	interrupt_gate exception_stub_29
++	interrupt_gate exception_stub_30
++	interrupt_gate exception_stub_31
++	user_defined_gates 32, 63
++	user_defined_gates 64, 127
++	user_defined_gates 128, 191
++	user_defined_gates 192, 255
++idt_end:
++
++/* IDT pointer for use with lidt */
++idt_ptr:
++	.word idt_end - idt - 1
++	.long idt
++
++	.global exception_init_asm
++exception_init_asm:
++	/* Save eax so we can use it as a temporary variable. */
++	pushl	%eax
++
++	/* Install the GDT. */
++	lgdt	gdt_ptr
++	/* Load the segment registers from it. */
++	ljmp	$0x10, $1f
++1:	movl	$0x18, %eax
++	movl	%eax, %ds
++	movl	%eax, %es
++	movl	%eax, %ss
++	movl	%eax, %fs
++	movl	%eax, %gs
++
++	/*
++	 * Loop over the entries which start out as two copies of the target
++	 * address. We can turn them into real interrupt gates by selectively
++	 * replacing certain bit fields.
++	 */
++	movl	$idt, %eax
++1:
++	andl	$0x0000ffff, (%eax)
++	orl	$0x00100000, (%eax)
++	andl	$0xffff0000, 4(%eax)
++	orl	$0x0000ee00, 4(%eax)
++	addl	$8, %eax
++	cmp	$idt_end, %eax
++	jne	1b
++
++	/* Install the IDT. */
++	lidt	idt_ptr
++
++	/* Restore eax and return to the caller. */
++	popl	%eax
++	ret
+diff --git a/payloads/libpayload/arch/486/exec.S b/payloads/libpayload/arch/486/exec.S
+new file mode 100644
+index 0000000000..814be8faf4
+--- /dev/null
++++ b/payloads/libpayload/arch/486/exec.S
+@@ -0,0 +1,83 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++/* calling syntax:  i386_do_exec(long addr, int argc, char **argv, int *ret) */
++
++/* This implements the payload API detailed here:
++ * https://www.coreboot.org/Payload_API
++ */
++
++.align 4
++.text
++
++.global i386_do_exec
++	.type i386_do_exec,@function
++
++i386_do_exec:
++	pushl %ebp
++	movl %esp, %ebp
++
++	/* Save the remaining callee preserved registers */
++	pushl %ebx
++	pushl %esi
++	pushl %edi
++
++	/* Push argc and argv on to the stack.
++	 *
++	 * We need to put a dummy value inbetween, as argc should be at offset
++	 * 0x10, according to the payload API.
++	 */
++	pushl 12(%ebp)
++	pushl $0
++	pushl 16(%ebp)
++
++	/* Push a "magic" number on the stack - the other payload will use this
++	 * as a clue that the argc and argv values on the stack are sane.
++	 */
++	pushl $0x12345678
++
++	/* Jump to the code */
++	call *8(%ebp)
++	/* %eax has the return value */
++
++	/* Skip over the argc/argv stuff still on the stack.
++	 * Don't assume %ebp is sane, here. Restore it from the stack.
++	 */
++	addl $0x10, %esp
++
++	/* Restore the saved registers */
++	popl %edi
++	popl %esi
++	popl %ebx
++	popl %ebp
++
++	/* Get pointer to return value and save the return value in it. */
++	movl 16(%esp), %ecx
++	movl %eax, (%ecx)
++
++	ret
+diff --git a/payloads/libpayload/arch/486/gdb.c b/payloads/libpayload/arch/486/gdb.c
+new file mode 100644
+index 0000000000..7d2951282e
+--- /dev/null
++++ b/payloads/libpayload/arch/486/gdb.c
+@@ -0,0 +1,89 @@
++/*
++ * Copyright 2014 Google Inc.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but without any warranty; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#include <exception.h>
++#include <gdb.h>
++#include <libpayload.h>
++
++static const u8 type_to_signal[] = {
++	[EXC_DE]  = GDB_SIGFPE,
++	[EXC_DB]  = GDB_SIGTRAP,
++	[EXC_NMI] = GDB_SIGKILL,
++	[EXC_BP]  = GDB_SIGTRAP,
++	[EXC_OF]  = GDB_SIGFPE,
++	[EXC_BR]  = GDB_SIGSEGV,
++	[EXC_UD]  = GDB_SIGILL,
++	[EXC_NM]  = GDB_SIGEMT,
++	[EXC_DF]  = GDB_SIGKILL,
++	[EXC_TS]  = GDB_SIGSEGV,
++	[EXC_NP]  = GDB_SIGSEGV,
++	[EXC_SS]  = GDB_SIGBUS,
++	[EXC_GP]  = GDB_SIGSEGV,
++	[EXC_PF]  = GDB_SIGSEGV,
++	[EXC_MF]  = GDB_SIGEMT,
++	[EXC_AC]  = GDB_SIGBUS,
++	[EXC_MC]  = GDB_SIGKILL,
++	[EXC_XF]  = GDB_SIGFPE,
++	[EXC_SX]  = GDB_SIGFPE,
++};
++
++static void gdb_exception_hook(u8 vector)
++{
++	gdb_command_loop(type_to_signal[vector]);
++}
++
++void gdb_arch_init(void)
++{
++	for (int vector = 0; vector < ARRAY_SIZE(type_to_signal); ++vector) {
++		if (type_to_signal[vector])
++			set_interrupt_handler(vector, &gdb_exception_hook);
++	}
++}
++
++void gdb_arch_enter(void)
++{
++	u32 *esp;
++
++	asm volatile ("mov %%esp, %0" : "=r"(esp) );
++
++	/* Avoid reentrant exceptions, just call the hook if in one already. */
++	if (esp >= exception_stack && esp <= exception_stack_end)
++		gdb_exception_hook(EXC_BP);
++	else
++		asm volatile ("int3");
++}
++
++int gdb_arch_set_single_step(int on)
++{
++	const u32 tf_bit = 1 << 8;
++
++	if (on)
++		exception_state->regs.eflags |= tf_bit;
++	else
++		exception_state->regs.eflags &= ~tf_bit;
++
++	return 0;
++}
++
++void gdb_arch_encode_regs(struct gdb_message *message)
++{
++	gdb_message_encode_bytes(message, &exception_state->regs,
++				 sizeof(exception_state->regs));
++}
++
++void gdb_arch_decode_regs(int offset, struct gdb_message *message)
++{
++	gdb_message_decode_bytes(message, offset, &exception_state->regs,
++				 sizeof(exception_state->regs));
++}
+diff --git a/payloads/libpayload/arch/486/head.S b/payloads/libpayload/arch/486/head.S
+new file mode 100644
+index 0000000000..1052b8c94d
+--- /dev/null
++++ b/payloads/libpayload/arch/486/head.S
+@@ -0,0 +1,143 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ * Copyright (C) 2017 Patrick Rudolph <siro@das-labor.org>
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++	.code32
++	.global _entry
++	.text
++	.align 4
++
++/*
++ * Our entry point - assume that the CPU is in 32 bit protected mode and
++ * all segments are in a flat model. That's our operating mode, so we won't
++ * change anything.
++ */
++_entry:
++	jmp _init
++
++	.align 4
++
++#define MB_MAGIC 0x1BADB002
++#define MB_FLAGS 0x00010003
++
++mb_header:
++	.long MB_MAGIC
++	.long MB_FLAGS
++	.long -(MB_MAGIC + MB_FLAGS)
++	.long mb_header
++	.long _start
++	.long _edata
++	.long _end
++	.long _init
++
++#define CB_MAGIC_VALUE	0x12345678
++#define CB_MAGIC	0x04
++#define CB_ARGV		0x08
++#define CB_ARGC		0x10
++
++/*
++ * This function saves off the previous stack and switches us to our
++ * own execution environment.
++ */
++_init:
++	/* No interrupts, please. */
++	cli
++
++	/* Store EAX and EBX */
++	movl %eax, loader_eax
++	movl %ebx, loader_ebx
++
++	/* Copy argv[] and argc as demanded by the Payload API,
++	 * see https://www.coreboot.org/Payload_API and exec.S.
++	 */
++	cmpl $CB_MAGIC_VALUE, CB_MAGIC(%esp)
++	jne 1f
++
++	movl CB_ARGV(%esp), %eax
++	movl %eax, main_argv
++
++	movl CB_ARGC(%esp), %eax
++	movl %eax, main_argc
++1:
++	/* Store current stack pointer and set up new stack. */
++	movl %esp, %eax
++	movl $_stack, %esp
++	pushl %eax
++
++	/* Enable special x86 functions if present. */
++	pushl %eax
++	pushl %ebx
++	pushl %ecx
++	pushl %edx
++
++	movl $0, %eax
++	cpuid
++	/* Test if CPUID(eax=1) is available. */
++	test %eax, %eax
++	je cpuid_done
++
++	/* Get CPU features. */
++	movl $1, %eax
++	cpuid
++
++cpuid_fpu:
++	/* Test if x87 FPU is present */
++	test $1, %edx
++	je cpuid_sse
++
++	fninit
++	movl %cr0, %eax
++	andl $0xFFFFFFFB, %eax	/* clear EM */
++	orl $0x00000022, %eax	/* set MP, NE */
++	movl %eax, %cr0
++
++cpuid_sse:
++	/* Test if SSE is available */
++	test $0x02000000, %edx
++	je cpuid_done
++
++	movl %cr4, %eax
++	orl $0x00000600, %eax	/* set OSFXSR, OSXMMEXCPT */
++	movl %eax, %cr4
++
++cpuid_done:
++	popl %edx
++	popl %ecx
++	popl %ebx
++	popl %eax
++
++	/* Let's rock. */
++	call start_main
++
++	/* %eax has the return value - pass it on unmolested */
++_leave:
++	/* Restore old stack. */
++	popl %esp
++
++	/* Return to the original context. */
++	ret
+diff --git a/payloads/libpayload/arch/486/libpayload.ldscript b/payloads/libpayload/arch/486/libpayload.ldscript
+new file mode 100644
+index 0000000000..2d7e9129f7
+--- /dev/null
++++ b/payloads/libpayload/arch/486/libpayload.ldscript
+@@ -0,0 +1,86 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++OUTPUT_FORMAT(elf32-i386)
++OUTPUT_ARCH(i386)
++
++ENTRY(_entry)
++
++SECTIONS
++{
++	. = CONFIG_LP_BASE_ADDRESS;
++
++	. = ALIGN(16);
++	_start = .;
++
++	.text : {
++		*(.text._entry)
++		*(.text)
++		*(.text.*)
++	}
++
++	.rodata : {
++		*(.rodata)
++		*(.rodata.*)
++	}
++
++	.data : {
++		*(.data)
++		*(.data.*)
++	}
++
++	_edata = .;
++
++	.bss : {
++		*(.sbss)
++		*(.sbss.*)
++		*(.bss)
++		*(.bss.*)
++		*(COMMON)
++
++		/* Stack and heap */
++
++		. = ALIGN(16);
++		_heap = .;
++		. += CONFIG_LP_HEAP_SIZE;
++		. = ALIGN(16);
++		_eheap = .;
++
++		_estack = .;
++		. += CONFIG_LP_STACK_SIZE;
++		. = ALIGN(16);
++		_stack = .;
++	}
++
++	_end = .;
++
++	/DISCARD/ : {
++		*(.comment)
++		*(.note*)
++	}
++}
+diff --git a/payloads/libpayload/arch/486/main.c b/payloads/libpayload/arch/486/main.c
+new file mode 100644
+index 0000000000..288f474dfc
+--- /dev/null
++++ b/payloads/libpayload/arch/486/main.c
+@@ -0,0 +1,81 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#include <exception.h>
++#include <libpayload.h>
++#include <arch/apic.h>
++
++unsigned long loader_eax;  /**< The value of EAX passed from the loader */
++unsigned long loader_ebx;  /**< The value of EBX passed from the loader */
++
++int main_argc;    /**< The argc value to pass to main() */
++
++/** The argv value to pass to main() */
++char *main_argv[MAX_ARGC_COUNT];
++
++/**
++ * This is our C entry function - set up the system
++ * and jump into the payload entry point.
++ */
++int start_main(void);
++int start_main(void)
++{
++	extern int main(int argc, char **argv);
++
++	/* Gather system information. */
++	lib_get_sysinfo();
++
++	/* Optionally set up the consoles. */
++#if !CONFIG(LP_SKIP_CONSOLE_INIT)
++	console_init();
++#endif
++
++	exception_init();
++
++	if (CONFIG(LP_ENABLE_APIC)) {
++		apic_init();
++
++		enable_interrupts();
++	}
++
++	/*
++	 * Any other system init that has to happen before the
++	 * user gets control goes here.
++	 */
++
++	/*
++	 * Go to the entry point.
++	 * In the future we may care about the return value.
++	 */
++
++	/*
++	 * Returning from main() will go to the _leave function to return
++	 * us to the original context.
++	 */
++	return main(main_argc, (main_argc != 0) ? main_argv : NULL);
++}
+diff --git a/payloads/libpayload/arch/486/multiboot.c b/payloads/libpayload/arch/486/multiboot.c
+new file mode 100644
+index 0000000000..26dc4f8cd0
+--- /dev/null
++++ b/payloads/libpayload/arch/486/multiboot.c
+@@ -0,0 +1,127 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#include <libpayload-config.h>
++#include <libpayload.h>
++#include <multiboot_tables.h>
++
++extern unsigned long loader_eax;
++extern unsigned long loader_ebx;
++
++static int mb_add_memrange(struct sysinfo_t *info, unsigned long long base,
++			   unsigned long long size, unsigned int type)
++{
++	if (info->n_memranges >= SYSINFO_MAX_MEM_RANGES)
++		return -1;
++
++#if CONFIG(LP_MEMMAP_RAM_ONLY)
++	/* 1 == normal RAM.  Ignore everything else for now */
++	if (type != 1)
++		return 0;
++#endif
++
++	info->memrange[info->n_memranges].base = base;
++	info->memrange[info->n_memranges].size = size;
++	info->memrange[info->n_memranges].type = type;
++	info->n_memranges++;
++
++	return 0;
++}
++
++static void mb_parse_mmap(struct multiboot_header *table,
++			  struct sysinfo_t *info)
++{
++	u8 *start = (u8 *) phys_to_virt(table->mmap_addr);
++	u8 *ptr = start;
++
++	info->n_memranges = 0;
++
++	while(ptr < (start + table->mmap_length)) {
++		struct multiboot_mmap *mmap = (struct multiboot_mmap *) ptr;
++
++		if (mb_add_memrange(info, mmap->addr, mmap->length, mmap->type))
++			return;
++
++		ptr += (mmap->size + sizeof(mmap->size));
++	}
++}
++
++static void mb_parse_meminfo(struct multiboot_header *table,
++			     struct sysinfo_t *info)
++{
++	unsigned long long mem_low = table->mem_lower;
++	unsigned long long mem_high = table->mem_higher;
++
++	info->n_memranges = 0;
++
++	if (mem_low)
++		mb_add_memrange(info, 0 * MiB, mem_low * KiB, 1);
++
++	if (mem_high)
++		mb_add_memrange(info, 1 * MiB, mem_high * KiB, 1);
++}
++
++static void mb_parse_cmdline(struct multiboot_header *table)
++{
++	extern int main_argc;
++	extern char *main_argv[];
++	char *c = phys_to_virt(table->cmdline);
++
++	while(*c != '\0' && main_argc < MAX_ARGC_COUNT) {
++		main_argv[main_argc++] = c;
++
++		for( ; *c != '\0' && !isspace(*c); c++);
++
++		if (*c) {
++			*c = 0;
++			c++;
++		}
++	}
++}
++
++int get_multiboot_info(struct sysinfo_t *info)
++{
++	struct multiboot_header *table;
++
++	if (loader_eax != MULTIBOOT_MAGIC)
++		return -1;
++
++	table = (struct multiboot_header *) phys_to_virt(loader_ebx);
++
++	info->mbtable = phys_to_virt(loader_ebx);
++
++	if (table->flags & MULTIBOOT_FLAGS_MMAP)
++		mb_parse_mmap(table, info);
++	else if (table->flags & MULTIBOOT_FLAGS_MEMINFO)
++		mb_parse_meminfo(table, info);
++
++	if (table->flags & MULTIBOOT_FLAGS_CMDLINE)
++		mb_parse_cmdline(table);
++
++	return 0;
++}
+diff --git a/payloads/libpayload/arch/486/rom_media.c b/payloads/libpayload/arch/486/rom_media.c
+new file mode 100644
+index 0000000000..ffb3809e5d
+--- /dev/null
++++ b/payloads/libpayload/arch/486/rom_media.c
+@@ -0,0 +1,110 @@
++/*
++ *
++ * Copyright (C) 2013 Google, Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++#define LIBPAYLOAD
++
++#include <cbfs.h>
++#include <string.h>
++
++#ifdef LIBPAYLOAD
++# define printk(x...)
++# define init_default_cbfs_media libpayload_init_default_cbfs_media
++  extern int libpayload_init_default_cbfs_media(struct cbfs_media *media);
++#else
++# include <console/console.h>
++#endif
++
++// Implementation of memory-mapped ROM media source on X86.
++
++static int x86_rom_open(struct cbfs_media *media) {
++	return 0;
++}
++
++static void *x86_rom_map(struct cbfs_media *media, size_t offset, size_t count) {
++	void *ptr;
++	// Some address (ex, pointer to master header) may be given in memory
++	// mapped location. To workaround that, we handle >0xf0000000 as real
++	// memory pointer.
++
++	if ((uint32_t)offset > (uint32_t)0xf0000000)
++		ptr = (void*)offset;
++	else
++		ptr = (void*)(0 - (uint32_t)media->context + offset);
++	return ptr;
++}
++
++static void *x86_rom_unmap(struct cbfs_media *media, const void *address) {
++	return NULL;
++}
++
++static size_t x86_rom_read(struct cbfs_media *media, void *dest, size_t offset,
++			   size_t count) {
++	void *ptr = x86_rom_map(media, offset, count);
++	memcpy(dest, ptr, count);
++	x86_rom_unmap(media, ptr);
++	return count;
++}
++
++static int x86_rom_close(struct cbfs_media *media) {
++	return 0;
++}
++
++int init_x86rom_cbfs_media(struct cbfs_media *media);
++int init_x86rom_cbfs_media(struct cbfs_media *media) {
++	// On X86, we always keep a reference of pointer to CBFS header in
++	// 0xfffffffc, and the pointer is still a memory-mapped address.
++	// Since the CBFS core always use ROM offset, we need to figure out
++	// header->romsize even before media is initialized.
++	struct cbfs_header *header = (struct cbfs_header*)
++			*(uint32_t*)(0xfffffffc);
++	if (CBFS_HEADER_MAGIC != ntohl(header->magic)) {
++#if CONFIG(LP_ROM_SIZE)
++		printk(BIOS_ERR, "Invalid CBFS master header at %p\n", header);
++		media->context = (void*)CONFIG_LP_ROM_SIZE;
++#else
++		return -1;
++#endif
++	} else {
++		uint32_t romsize = ntohl(header->romsize);
++		media->context = (void*)romsize;
++#if CONFIG(LP_ROM_SIZE)
++		if (CONFIG_LP_ROM_SIZE != romsize)
++			printk(BIOS_WARNING, "rom size unmatch (%d/%d)\n",
++			       CONFIG_LP_ROM_SIZE, romsize);
++#endif
++	}
++	media->open = x86_rom_open;
++	media->close = x86_rom_close;
++	media->map = x86_rom_map;
++	media->unmap = x86_rom_unmap;
++	media->read = x86_rom_read;
++	return 0;
++}
++
++int init_default_cbfs_media(struct cbfs_media *media) {
++	return init_x86rom_cbfs_media(media);
++}
+diff --git a/payloads/libpayload/arch/486/selfboot.c b/payloads/libpayload/arch/486/selfboot.c
+new file mode 100644
+index 0000000000..5c3e4459e9
+--- /dev/null
++++ b/payloads/libpayload/arch/486/selfboot.c
+@@ -0,0 +1,34 @@
++/*
++ * Copyright 2014 Google Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#include <libpayload.h>
++
++void selfboot(void *entry)
++{
++	void (*entry_func)(void) = entry;
++	entry_func();
++}
+diff --git a/payloads/libpayload/arch/486/string.c b/payloads/libpayload/arch/486/string.c
+new file mode 100644
+index 0000000000..836d049831
+--- /dev/null
++++ b/payloads/libpayload/arch/486/string.c
+@@ -0,0 +1,94 @@
++/*
++ * Copyright (C) 1991,1992,1993,1997,1998,2003, 2005 Free Software Foundation, Inc.
++ * Copyright (c) 2011 The ChromiumOS Authors.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++/* From glibc-2.14, sysdeps/i386/memset.c */
++
++#include <stdint.h>
++
++#include "string.h"
++
++typedef uint32_t op_t;
++
++void *memset(void *dstpp, int c, size_t len)
++{
++	int d0;
++	unsigned long int dstp = (unsigned long int) dstpp;
++
++	/* This explicit register allocation improves code very much indeed. */
++	register op_t x asm("ax");
++
++	x = (unsigned char) c;
++
++	/* Clear the direction flag, so filling will move forward.  */
++	asm volatile("cld");
++
++	/* This threshold value is optimal.  */
++	if (len >= 12) {
++		/* Fill X with four copies of the char we want to fill with. */
++		x |= (x << 8);
++		x |= (x << 16);
++
++		/* Adjust LEN for the bytes handled in the first loop.  */
++		len -= (-dstp) % sizeof(op_t);
++
++		/*
++		 * There are at least some bytes to set. No need to test for
++		 * LEN == 0 in this alignment loop.
++		 */
++
++		/* Fill bytes until DSTP is aligned on a longword boundary. */
++		asm volatile(
++			"rep\n"
++			"stosb" /* %0, %2, %3 */ :
++			"=D" (dstp), "=c" (d0) :
++			"0" (dstp), "1" ((-dstp) % sizeof(op_t)), "a" (x) :
++			"memory");
++
++		/* Fill longwords.  */
++		asm volatile(
++			"rep\n"
++			"stosl" /* %0, %2, %3 */ :
++			"=D" (dstp), "=c" (d0) :
++			"0" (dstp), "1" (len / sizeof(op_t)), "a" (x) :
++			"memory");
++		len %= sizeof(op_t);
++	}
++
++	/* Write the last few bytes. */
++	asm volatile(
++		"rep\n"
++		"stosb" /* %0, %2, %3 */ :
++		"=D" (dstp), "=c" (d0) :
++		"0" (dstp), "1" (len), "a" (x) :
++		"memory");
++
++	return dstpp;
++}
++
++void *memcpy(void *dest, const void *src, size_t n)
++{
++	unsigned long d0, d1, d2;
++
++	asm volatile(
++		"rep ; movsl\n\t"
++		"movl %4,%%ecx\n\t"
++		"rep ; movsb\n\t"
++		: "=&c" (d0), "=&D" (d1), "=&S" (d2)
++		: "0" (n >> 2), "g" (n & 3), "1" (dest), "2" (src)
++		: "memory"
++	);
++
++	return dest;
++}
+diff --git a/payloads/libpayload/arch/486/sysinfo.c b/payloads/libpayload/arch/486/sysinfo.c
+new file mode 100644
+index 0000000000..5dd606746f
+--- /dev/null
++++ b/payloads/libpayload/arch/486/sysinfo.c
+@@ -0,0 +1,87 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#include <libpayload-config.h>
++#include <libpayload.h>
++#include <coreboot_tables.h>
++#include <multiboot_tables.h>
++
++#define CPU_KHZ_DEFAULT 200
++
++/**
++ * This is a global structure that is used through the library - we set it
++ * up initially with some dummy values - hopefully they will be overridden.
++ */
++struct sysinfo_t lib_sysinfo = {
++	.cpu_khz = CPU_KHZ_DEFAULT,
++#if CONFIG(LP_SERIAL_CONSOLE)
++	.ser_ioport = CONFIG_LP_SERIAL_IOBASE,
++#else
++	.ser_ioport = 0x3f8,
++#endif
++};
++
++int lib_get_sysinfo(void)
++{
++	int ret;
++
++#if CONFIG(LP_MULTIBOOT)
++	/* Get the information from the multiboot tables,
++	 * if they exist */
++	get_multiboot_info(&lib_sysinfo);
++#endif
++
++	/* Get information from the coreboot tables,
++	 * if they exist */
++
++	ret = get_coreboot_info(&lib_sysinfo);
++
++	/* Get the CPU speed (for delays) if not set from the default value. */
++	if (lib_sysinfo.cpu_khz == CPU_KHZ_DEFAULT)
++		lib_sysinfo.cpu_khz = get_cpu_speed();
++
++	if (!lib_sysinfo.n_memranges) {
++		/* If we can't get a good memory range, use the default. */
++		lib_sysinfo.n_memranges = 2;
++
++		lib_sysinfo.memrange[0].base = 0;
++		lib_sysinfo.memrange[0].size = 640 * 1024;
++		lib_sysinfo.memrange[0].type = CB_MEM_RAM;
++
++		lib_sysinfo.memrange[1].base = 1024 * 1024;
++		lib_sysinfo.memrange[1].size = 31 * 1024 * 1024;
++		lib_sysinfo.memrange[1].type = CB_MEM_RAM;
++	}
++
++#if CONFIG(LP_PCI)
++	pci_init(&lib_sysinfo.pacc);
++	pci_scan_bus(&lib_sysinfo.pacc);
++#endif
++
++	return ret;
++}
+diff --git a/payloads/libpayload/arch/486/timer.c b/payloads/libpayload/arch/486/timer.c
+new file mode 100644
+index 0000000000..6dcfd5b27f
+--- /dev/null
++++ b/payloads/libpayload/arch/486/timer.c
+@@ -0,0 +1,190 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++/**
++ * @file x86/timer.c
++ * x86 specific timer routines
++ */
++
++#include <libpayload.h>
++#include <arch/rdtsc.h>
++#include <arch/cpuid.h>
++#include <arch/msr.h>
++
++#define MSR_PLATFORM_INFO		0xce
++
++/**
++ * @ingroup arch
++ * Global variable containing the speed of the processor in KHz.
++ */
++uint32_t cpu_khz;
++
++/**
++ * @brief Measure the speed of the processor for use in delays
++ *
++ * @return The CPU speed in kHz.
++ */
++static unsigned int calibrate_pit(void)
++{
++	unsigned long long start, end;
++	const uint32_t clock_rate = 1193182; // 1.193182 MHz
++	const uint16_t interval = (2 * clock_rate) / 1000; // 2 ms
++
++	/* Set up the PPC port - disable the speaker, enable the T2 gate. */
++	outb((inb(0x61) & ~0x02) | 0x01, 0x61);
++
++	/* Set the PIT to Mode 0, counter 2, word access. */
++	outb(0xB0, 0x43);
++
++	/* Load the interval into the counter. */
++	outb(interval & 0xff, 0x42);
++	outb((interval >> 8) & 0xff, 0x42);
++
++	/* Read the number of ticks during the period. */
++	start = rdtsc();
++	while (!(inb(0x61) & 0x20)) ;
++	end = rdtsc();
++
++	/*
++	 * The number of milliseconds for a period is
++	 * clock_rate / (interval * 1000). Multiply that by the number of
++	 * measured clocks to get the kHz value.
++	 */
++	return (end - start) * clock_rate / (1000 * interval);
++}
++
++/**
++ * @brief Calculates the core clock frequency via CPUID 0x15
++ *
++ * Newer Intel CPUs report their core clock in CPUID leaf 0x15. Early models
++ * supporting this leaf didn't provide the nominal crystal frequency in ecx,
++ * hence we use hard coded values for them.
++ */
++static int get_cpu_khz_xtal(void)
++{
++	uint32_t ecx, edx, num, denom;
++	uint64_t nominal;
++
++	if (cpuid_max() < 0x15)
++		return -1;
++	cpuid(0x15, denom, num, ecx, edx);
++
++	if (denom == 0 || num == 0)
++		return -1;
++
++	if (ecx != 0) {
++		nominal = ecx;
++	} else {
++		if (cpuid_family() != 6)
++			return -1;
++
++		switch (cpuid_model()) {
++		case SKYLAKE_U_Y:
++		case SKYLAKE_S_H:
++		case KABYLAKE_U_Y:
++		case KABYLAKE_S_H:
++			nominal = 24000000;
++			break;
++		case APOLLOLAKE:
++			nominal = 19200000;
++			break;
++		default:
++			return -1;
++		}
++	}
++
++	return nominal * num / denom / 1000;
++}
++
++/**
++ * @brief Returns three times the bus clock in kHz
++ *
++ * The result of calculations with the returned value shall be divided by 3.
++ * This helps to avoid rounding errors.
++ */
++static int get_bus_khz_x3(void)
++{
++	if (cpuid_family() != 6)
++		return -1;
++
++	switch (cpuid_model()) {
++	case NEHALEM:
++		return 400 * 1000; /* 133 MHz */
++	case SANDYBRIDGE:
++	case IVYBRIDGE:
++	case HASWELL:
++	case HASWELL_U:
++	case HASWELL_GT3E:
++	case BROADWELL:
++	case BROADWELL_U:
++		return 300 * 1000; /* 100 MHz */
++	default:
++		return -1;
++	}
++}
++
++/**
++ * @brief Returns the calculated CPU frequency
++ *
++ * Over the years, multiple ways to discover the CPU frequency have been
++ * exposed through CPUID and MSRs. Try the most recent and accurate first
++ * (crystal information in CPUID leaf 0x15) and then fall back to older
++ * methods.
++ *
++ * This should cover all Intel Core i processors at least. For older
++ * processors we fall back to the PIT calibration.
++ */
++static int get_cpu_khz_fast(void)
++{
++	/* Try core crystal clock frequency first (supposed to be more accurate). */
++	const int cpu_khz_xtal = get_cpu_khz_xtal();
++	if (cpu_khz_xtal > 0)
++		return cpu_khz_xtal;
++
++	/* Try `bus clock * speedstep multiplier`. */
++	const int bus_x3 = get_bus_khz_x3();
++	if (bus_x3 <= 0)
++		return -1;
++	/*
++	 * Systems with an invariant TSC report the multiplier (maximum
++	 * non-turbo ratio) in MSR_PLATFORM_INFO[15:8].
++	 */
++	const unsigned int mult = _rdmsr(MSR_PLATFORM_INFO) >> 8 & 0xff;
++	return bus_x3 * mult / 3;
++}
++
++unsigned int get_cpu_speed(void)
++{
++	const int cpu_khz_fast = get_cpu_khz_fast();
++	if (cpu_khz_fast > 0)
++		cpu_khz = (unsigned int)cpu_khz_fast;
++	else
++		cpu_khz = calibrate_pit();
++
++	return cpu_khz;
++}
+diff --git a/payloads/libpayload/arch/486/util.S b/payloads/libpayload/arch/486/util.S
+new file mode 100644
+index 0000000000..9a8b20bb83
+--- /dev/null
++++ b/payloads/libpayload/arch/486/util.S
+@@ -0,0 +1,37 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++	.global halt
++	.text
++	.align 4
++
++/* This function puts the system into a halt. */
++halt:
++	cli
++	hlt
++	jmp halt
+diff --git a/payloads/libpayload/arch/486/virtual.c b/payloads/libpayload/arch/486/virtual.c
+new file mode 100644
+index 0000000000..9450ac0d86
+--- /dev/null
++++ b/payloads/libpayload/arch/486/virtual.c
+@@ -0,0 +1,36 @@
++/*
++ *
++ * Copyright (C) 2008 coresystems GmbH
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#include <unistd.h>
++
++unsigned long virtual_offset = 0;
++
++int getpagesize(void)
++{
++	return 4096;
++}
+diff --git a/payloads/libpayload/bin/lpgcc b/payloads/libpayload/bin/lpgcc
+index 5e418e84bd..645c5586fc 100755
+--- a/payloads/libpayload/bin/lpgcc
++++ b/payloads/libpayload/bin/lpgcc
+@@ -91,6 +91,12 @@ if [ "$CONFIG_LP_ARCH_X86" = "y" ]; then
+   _ARCHEXTRA="-m32 "
+   _ARCH=x86
+ fi
++if [ "$CONFIG_LP_ARCH_486" = "y" ]; then
++  _ARCHINCDIR=$_INCDIR/486
++  _ARCHLIBDIR=$_LIBDIR/486
++  _ARCHEXTRA="-m32 "
++  _ARCH=x86
++fi
+ if [ "$CONFIG_LP_ARCH_MOCK" = "y" ]; then
+   _ARCHINCDIR=$_INCDIR/mock
+   _ARCHLIBDIR=$_LIBDIR/mock
+diff --git a/payloads/libpayload/configs/defconfig b/payloads/libpayload/configs/defconfig
+index 4ef1ed15b7..a94486c4a5 100644
+--- a/payloads/libpayload/configs/defconfig
++++ b/payloads/libpayload/configs/defconfig
+@@ -1,8 +1,105 @@
+-# CONFIG_LP_MULTIBOOT is not set
+-CONFIG_LP_COREBOOT_VIDEO_CONSOLE=y
+-CONFIG_LP_USB=y
+-CONFIG_LP_USB_UHCI=y
+-CONFIG_LP_USB_OHCI=y
+-CONFIG_LP_USB_EHCI=y
+-CONFIG_LP_USB_XHCI=y
+-CONFIG_LP_HEAP_SIZE=1048576
++#
++# Automatically generated file; DO NOT EDIT.
++# Libpayload Configuration
++#
++
++#
++# Generic Options
++#
++# CONFIG_LP_GPL is not set
++# CONFIG_LP_EXPERIMENTAL is not set
++# CONFIG_LP_DEVELOPER is not set
++# CONFIG_LP_CHROMEOS is not set
++CONFIG_LP_COMPILER_GCC=y
++# CONFIG_LP_COMPILER_LLVM_CLANG is not set
++CONFIG_LP_LTO=y
++# CONFIG_LP_MEMMAP_RAM_ONLY is not set
++# end of Generic Options
++
++#
++# Architecture Options
++#
++# CONFIG_LP_ARCH_ARM is not set
++# CONFIG_LP_ARCH_X86 is not set
++CONFIG_LP_ARCH_486=y
++# CONFIG_LP_ARCH_ARM64 is not set
++# CONFIG_LP_ARCH_MOCK is not set
++CONFIG_LP_MULTIBOOT=y
++CONFIG_LP_HEAP_SIZE=131072
++CONFIG_LP_STACK_SIZE=16384
++CONFIG_LP_BASE_ADDRESS=0x00100000
++# end of Architecture Options
++
++#
++# Standard Libraries
++#
++CONFIG_LP_LIBC=y
++CONFIG_LP_CURSES=y
++# CONFIG_LP_TINYCURSES is not set
++CONFIG_LP_PDCURSES=y
++# CONFIG_LP_CBFS is not set
++# CONFIG_LP_LZMA is not set
++# CONFIG_LP_LZ4 is not set
++# CONFIG_LP_VBOOT_LIB is not set
++# end of Standard Libraries
++
++#
++# Console Options
++#
++# CONFIG_LP_SKIP_CONSOLE_INIT is not set
++# CONFIG_LP_CBMEM_CONSOLE is not set
++CONFIG_LP_SERIAL_CONSOLE=y
++CONFIG_LP_8250_SERIAL_CONSOLE=y
++# CONFIG_LP_S5P_SERIAL_CONSOLE is not set
++# CONFIG_LP_IPQ806X_SERIAL_CONSOLE is not set
++# CONFIG_LP_IPQ40XX_SERIAL_CONSOLE is not set
++# CONFIG_LP_QCS405_SERIAL_CONSOLE is not set
++# CONFIG_LP_QUALCOMM_QUPV3_SERIAL_CONSOLE is not set
++# CONFIG_LP_PL011_SERIAL_CONSOLE is not set
++CONFIG_LP_SERIAL_IOBASE=0x3f8
++# CONFIG_LP_SERIAL_SET_SPEED is not set
++# CONFIG_LP_SERIAL_ACS_FALLBACK is not set
++CONFIG_LP_VIDEO_CONSOLE=y
++CONFIG_LP_VGA_VIDEO_CONSOLE=y
++# CONFIG_LP_COREBOOT_VIDEO_CONSOLE is not set
++# CONFIG_LP_CBGFX_FAST_RESAMPLE is not set
++CONFIG_LP_PC_I8042=y
++# CONFIG_LP_PC_MOUSE is not set
++CONFIG_LP_PC_KEYBOARD=y
++CONFIG_LP_PC_KEYBOARD_LAYOUT_US=y
++# CONFIG_LP_PC_KEYBOARD_LAYOUT_DE is not set
++# CONFIG_LP_PC_KEYBOARD_TRANSLATION is not set
++# end of Console Options
++
++#
++# Drivers
++#
++# CONFIG_LP_PCI is not set
++CONFIG_LP_NVRAM=y
++# CONFIG_LP_MOUSE_CURSOR is not set
++# CONFIG_LP_RTC_PORT_EXTENDED_VIA is not set
++# CONFIG_LP_SPEAKER is not set
++CONFIG_LP_TIMER_NONE=y
++# CONFIG_LP_TIMER_MCT is not set
++# CONFIG_LP_TIMER_TEGRA_1US is not set
++# CONFIG_LP_TIMER_IPQ806X is not set
++# CONFIG_LP_TIMER_IPQ40XX is not set
++# CONFIG_LP_TIMER_ARM64_ARCH is not set
++# CONFIG_LP_TIMER_RK3288 is not set
++# CONFIG_LP_TIMER_RK3399 is not set
++# CONFIG_LP_TIMER_MTK is not set
++# CONFIG_LP_TIMER_MTK_V2 is not set
++CONFIG_LP_TIMER_GENERIC_HZ=0
++CONFIG_LP_TIMER_GENERIC_REG=0x0
++CONFIG_LP_TIMER_GENERIC_HIGH_REG=0x0
++# CONFIG_LP_STORAGE is not set
++# CONFIG_LP_USB is not set
++# CONFIG_LP_UDC is not set
++# end of Drivers
++
++CONFIG_LP_LITTLE_ENDIAN=y
++CONFIG_LP_IO_ADDRESS_SPACE=y
++CONFIG_LP_ARCH_SPECIFIC_OPTIONS=y
++CONFIG_LP_IGNORE_UNKNOWN_INTERRUPTS=y
++# CONFIG_LP_LOG_UNKNOWN_INTERRUPTS is not set
++# CONFIG_LP_DIE_ON_UNKNOWN_INTERRUPT is not set
+diff --git a/payloads/libpayload/configs/defconfig-tinycurses b/payloads/libpayload/configs/defconfig-tinycurses
+index be49420090..dbb0003938 100644
+--- a/payloads/libpayload/configs/defconfig-tinycurses
++++ b/payloads/libpayload/configs/defconfig-tinycurses
+@@ -4,5 +4,5 @@ CONFIG_LP_COREBOOT_VIDEO_CONSOLE=y
+ CONFIG_LP_USB=y
+ CONFIG_LP_USB_UHCI=y
+ CONFIG_LP_USB_OHCI=y
+-CONFIG_LP_USB_EHCI=y
+-CONFIG_LP_USB_XHCI=y
++# CONFIG_LP_USB_EHCI is not set
++# CONFIG_LP_USB_XHCI is not set
+diff --git a/payloads/libpayload/drivers/usb/Kconfig b/payloads/libpayload/drivers/usb/Kconfig
+index a95a58d42c..c47a513d99 100644
+--- a/payloads/libpayload/drivers/usb/Kconfig
++++ b/payloads/libpayload/drivers/usb/Kconfig
+@@ -8,7 +8,7 @@ config USB
+ 
+ config USB_UHCI
+ 	bool "Support for USB UHCI controllers"
+-	depends on USB && ARCH_X86
++	depends on USB && (ARCH_X86 || ARCH_486)
+ 	default y if !CHROMEOS
+ 	help
+ 	  Select this option if you are going to use USB 1.1 on an Intel based
+@@ -92,7 +92,7 @@ config USB_GEN_HUB
+ config USB_PCI
+ 	bool "Auto-scan PCI bus for USB host controllers"
+ 	depends on USB
+-	default y if ARCH_X86
++	default y if ARCH_X86 || ARCH_486
+ 	default n
+ 
+ config UDC
+diff --git a/payloads/libpayload/include/486/arch/apic.h b/payloads/libpayload/include/486/arch/apic.h
+new file mode 100644
+index 0000000000..eedf1b4b2b
+--- /dev/null
++++ b/payloads/libpayload/include/486/arch/apic.h
+@@ -0,0 +1,46 @@
++/*
++ *
++ * Copyright 2018 Google LLC
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#ifndef __ARCH_X86_INCLUDES_ARCH_APIC_H__
++#define __ARCH_X86_INCLUDES_ARCH_APIC_H__
++
++/** Returns 1 if apic_init has been called */
++int apic_initialized(void);
++
++void apic_init(void);
++
++uint8_t apic_id(void);
++
++/** Signal the end of the interrupt handler. */
++void apic_eoi(uint8_t vector);
++
++void apic_delay(unsigned int usec);
++void apic_start_delay(unsigned int usec);
++void apic_wait_delay(void);
++
++#endif /* __ARCH_X86_INCLUDES_ARCH_APIC_H__ */
+diff --git a/payloads/libpayload/include/486/arch/barrier.h b/payloads/libpayload/include/486/arch/barrier.h
+new file mode 100644
+index 0000000000..dc75f1ab88
+--- /dev/null
++++ b/payloads/libpayload/include/486/arch/barrier.h
+@@ -0,0 +1,37 @@
++/*
++ *
++ * Copyright 2014 Google Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ *
++ */
++
++#ifndef __ARCH_BARRIER_H__
++#define __ARCH_BARRIER_H__
++
++#define mb()
++#define rmb()
++#define wmb()
++
++#endif /* __ARCH_BARRIER_H__ */
+diff --git a/payloads/libpayload/include/486/arch/cache.h b/payloads/libpayload/include/486/arch/cache.h
+new file mode 100644
+index 0000000000..8c915c34fb
+--- /dev/null
++++ b/payloads/libpayload/include/486/arch/cache.h
+@@ -0,0 +1,51 @@
++/*
++ *
++ * Copyright 2013 Google Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ *
++ * cache.h: Cache maintenance API for x86
++ */
++
++#ifndef __ARCH_CACHE_H__
++#define __ARCH_CACHE_H__
++
++#include <stddef.h>
++#include <stdint.h>
++
++/* returns number of bytes per cache line */
++unsigned int dcache_line_bytes(void);
++
++void dcache_invalidate_all(void);
++void dcache_clean_invalidate_all(void);
++void dcache_clean_all(void);
++void dcache_clean_by_mva(void const *addr, size_t len);
++void dcache_invalidate_by_mva(void const *addr, size_t len);
++void dcache_clean_invalidate_by_mva(void const *addr, size_t len);
++/* NOOPs mirroring ARM's cache API, since x86 devices usually cache snoop */
++#define dmb()
++#define dsb()
++#define cache_sync_instructions()
++
++#endif
+diff --git a/payloads/libpayload/include/486/arch/cpuid.h b/payloads/libpayload/include/486/arch/cpuid.h
+new file mode 100644
+index 0000000000..b01646dac0
+--- /dev/null
++++ b/payloads/libpayload/include/486/arch/cpuid.h
+@@ -0,0 +1,102 @@
++/*
++ *
++ * Copyright 2018 Google Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#ifndef _ARCH_CPUID_H
++#define _ARCH_CPUID_H
++
++#define cpuid(fn, eax, ebx, ecx, edx) \
++	asm("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "0"(fn))
++
++#define _declare_cpuid(reg)					\
++	static inline unsigned int cpuid_##reg(unsigned int fn)	\
++	{							\
++		unsigned int eax, ebx, ecx, edx;		\
++		cpuid(fn, eax, ebx, ecx, edx);			\
++		return reg;					\
++	}
++
++_declare_cpuid(eax)
++_declare_cpuid(ebx)
++_declare_cpuid(ecx)
++_declare_cpuid(edx)
++
++#undef _declare_cpuid
++
++#define cpuid_sub_leaf(fn, sub_leaf, eax, ebx, ecx, edx) \
++	asm("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "0"(fn), "1"(sub_leaf))
++
++#define _declare_cpuid_sub_leaf(reg)					\
++	static inline unsigned int cpuid_sub_leaf_##reg( \
++		unsigned int fn, unsigned int sub_leaf)	\
++	{								\
++		unsigned int eax, ebx, ecx, edx;			\
++		cpuid_sub_leaf(fn, sub_leaf, eax, ebx, ecx, edx);	\
++		return reg;						\
++	}
++
++_declare_cpuid_sub_leaf(eax)
++_declare_cpuid_sub_leaf(ebx)
++_declare_cpuid_sub_leaf(ecx)
++_declare_cpuid_sub_leaf(edx)
++
++#undef _declare_cpuid_sub_leaf
++
++static inline unsigned int cpuid_max(void)
++{
++	return cpuid_eax(0);
++}
++
++static inline unsigned int cpuid_family(void)
++{
++	const unsigned int eax = cpuid_eax(1);
++	return (eax & 0xff00000) >> (20 - 4) | (eax & 0xf00) >> 8;
++}
++
++static inline unsigned int cpuid_model(void)
++{
++	const unsigned int eax = cpuid_eax(1);
++	return (eax & 0xf0000) >> (16 - 4) | (eax & 0xf0) >> 4;
++}
++
++enum intel_fam6_model {
++	NEHALEM		= 0x25,
++	SANDYBRIDGE	= 0x2a,
++	IVYBRIDGE	= 0x3a,
++	HASWELL		= 0x3c,
++	BROADWELL_U	= 0x3d,
++	HASWELL_U	= 0x45,
++	HASWELL_GT3E	= 0x46,
++	BROADWELL	= 0x47,
++	SKYLAKE_U_Y	= 0x4e,
++	APOLLOLAKE	= 0x5c,
++	SKYLAKE_S_H	= 0x5e,
++	KABYLAKE_U_Y	= 0x8e,
++	KABYLAKE_S_H	= 0x9e,
++};
++
++#endif
+diff --git a/payloads/libpayload/include/486/arch/exception.h b/payloads/libpayload/include/486/arch/exception.h
+new file mode 100644
+index 0000000000..d88029b39e
+--- /dev/null
++++ b/payloads/libpayload/include/486/arch/exception.h
+@@ -0,0 +1,93 @@
++/*
++ *
++ * Copyright 2013 Google Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#ifndef _ARCH_EXCEPTION_H
++#define _ARCH_EXCEPTION_H
++
++#include <stdint.h>
++
++void exception_init_asm(void);
++void exception_dispatch(void);
++void enable_interrupts(void);
++void disable_interrupts(void);
++/** Returns 1 if interrupts are enabled. */
++int interrupts_enabled(void);
++
++struct exception_state
++{
++	/* Careful: x86/gdb.c currently relies on the size and order of regs. */
++	struct {
++		u32 eax;
++		u32 ecx;
++		u32 edx;
++		u32 ebx;
++		u32 esp;
++		u32 ebp;
++		u32 esi;
++		u32 edi;
++		u32 eip;
++		u32 eflags;
++		u32 cs;
++		u32 ss;
++		u32 ds;
++		u32 es;
++		u32 fs;
++		u32 gs;
++	} regs;
++	u32 error_code;
++	u32 vector;
++} __packed;
++extern struct exception_state *exception_state;
++
++extern u32 exception_stack[];
++extern u32 *exception_stack_end;
++
++enum {
++	EXC_DE = 0, /* Divide by zero */
++	EXC_DB = 1, /* Debug */
++	EXC_NMI = 2, /* Non maskable interrupt */
++	EXC_BP = 3, /* Breakpoint */
++	EXC_OF = 4, /* Overflow */
++	EXC_BR = 5, /* Bound range */
++	EXC_UD = 6, /* Invalid opcode */
++	EXC_NM = 7, /* Device not available */
++	EXC_DF = 8, /* Double fault */
++	EXC_TS = 10, /* Invalid TSS */
++	EXC_NP = 11, /* Segment not present */
++	EXC_SS = 12, /* Stack */
++	EXC_GP = 13, /* General protection */
++	EXC_PF = 14, /* Page fault */
++	EXC_MF = 16, /* x87 floating point */
++	EXC_AC = 17, /* Alignment check */
++	EXC_MC = 18, /* Machine check */
++	EXC_XF = 19, /* SIMD floating point */
++	EXC_SX = 30, /* Security */
++	EXC_COUNT
++};
++
++#endif
+diff --git a/payloads/libpayload/include/486/arch/io.h b/payloads/libpayload/include/486/arch/io.h
+new file mode 100644
+index 0000000000..d15e15d543
+--- /dev/null
++++ b/payloads/libpayload/include/486/arch/io.h
+@@ -0,0 +1,160 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ * Copyright (C) 2008 coresystems GmbH
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#ifndef _ARCH_IO_H
++#define _ARCH_IO_H
++
++#include <inttypes.h>
++
++/*
++ * readb/w/l writeb/w/l are deprecated. use read8/16/32 and write8/16/32
++ * instead for future development.
++ *
++ * TODO: make the existing code use read8/16/32 and write8/16/32 then remove
++ * readb/w/l and writeb/w/l.
++ */
++
++#define readb(_a) (*(volatile const unsigned char *) (_a))
++#define readw(_a) (*(volatile const unsigned short *) (_a))
++#define readl(_a) (*(volatile const unsigned int *) (_a))
++
++#define writeb(_v, _a) (*(volatile unsigned char *) (_a) = (_v))
++#define writew(_v, _a) (*(volatile unsigned short *) (_a) = (_v))
++#define writel(_v, _a) (*(volatile unsigned int *) (_a) = (_v))
++
++static inline __attribute__((always_inline)) uint8_t read8(const volatile void *addr)
++{
++	return *((volatile uint8_t *)(addr));
++}
++
++static inline __attribute__((always_inline)) uint16_t read16(const volatile void *addr)
++{
++	return *((volatile uint16_t *)(addr));
++}
++
++static inline __attribute__((always_inline)) uint32_t read32(const volatile void *addr)
++{
++	return *((volatile uint32_t *)(addr));
++}
++
++static inline __attribute__((always_inline)) uint64_t read64(const volatile void *addr)
++{
++	return *((volatile uint64_t *)(addr));
++}
++
++static inline __attribute__((always_inline)) void write8(volatile void *addr, uint8_t value)
++{
++	*((volatile uint8_t *)(addr)) = value;
++}
++
++static inline __attribute__((always_inline)) void write16(volatile void *addr, uint16_t value)
++{
++	*((volatile uint16_t *)(addr)) = value;
++}
++
++static inline __attribute__((always_inline)) void write32(volatile void *addr, uint32_t value)
++{
++	*((volatile uint32_t *)(addr)) = value;
++}
++
++static inline __attribute__((always_inline)) void write64(volatile void *addr, uint64_t value)
++{
++	*((volatile uint64_t *)(addr)) = value;
++}
++
++static inline unsigned int inl(int port)
++{
++	unsigned long val;
++	__asm__ __volatile__("inl %w1, %0" : "=a"(val) : "Nd"(port));
++	return val;
++}
++
++static inline unsigned short inw(int port)
++{
++	unsigned short val;
++	__asm__ __volatile__("inw %w1, %w0" : "=a"(val) : "Nd"(port));
++	return val;
++}
++
++static inline unsigned char inb(int port)
++{
++	unsigned char val;
++	__asm__ __volatile__("inb %w1, %b0" : "=a"(val) : "Nd"(port));
++	return val;
++}
++
++static inline void outl(unsigned int val, int port)
++{
++	__asm__ __volatile__("outl %0, %w1" : : "a"(val), "Nd"(port));
++}
++
++static inline void outw(unsigned short val, int port)
++{
++	__asm__ __volatile__("outw %w0, %w1" : : "a"(val), "Nd"(port));
++}
++
++static inline void outb(unsigned char val, int port)
++{
++	__asm__ __volatile__("outb %b0, %w1" : : "a"(val), "Nd"(port));
++}
++
++static inline void outsl(int port, const void *addr, unsigned long count)
++{
++	__asm__ __volatile__("rep; outsl" : "+S"(addr), "+c"(count) : "d"(port));
++}
++
++static inline void outsw(int port, const void *addr, unsigned long count)
++{
++	__asm__ __volatile__("rep; outsw" : "+S"(addr), "+c"(count) : "d"(port));
++}
++
++static inline void outsb(int port, const void *addr, unsigned long count)
++{
++	__asm__ __volatile__("rep; outsb" : "+S"(addr), "+c"(count) : "d"(port));
++}
++
++static inline void insl(int port, void *addr, unsigned long count)
++{
++	__asm__ __volatile__("rep; insl" : "+D"(addr), "+c"(count) : "d"(port)
++			     : "memory");
++}
++
++static inline void insw(int port, void *addr, unsigned long count)
++{
++	__asm__ __volatile__("rep; insw" : "+D"(addr), "+c"(count) : "d"(port)
++			     : "memory");
++}
++
++static inline void insb(int port, void *addr, unsigned long count)
++{
++	__asm__ __volatile__("rep; insb" : "+D"(addr), "+c"(count) : "d"(port)
++			     : "memory");
++}
++
++#endif
+diff --git a/payloads/libpayload/include/486/arch/msr.h b/payloads/libpayload/include/486/arch/msr.h
+new file mode 100644
+index 0000000000..b20618d67f
+--- /dev/null
++++ b/payloads/libpayload/include/486/arch/msr.h
+@@ -0,0 +1,57 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#ifndef _ARCH_MSR_H
++#define _ARCH_MSR_H
++
++static inline unsigned long long _rdmsr(unsigned int msr)
++{
++	unsigned long long val;
++	asm volatile("rdmsr" : "=A" (val) : "c" (msr));
++	return val;
++}
++
++static inline void _wrmsr(unsigned int msr, unsigned long long val)
++{
++	asm volatile("wrmsr" : : "c" (msr), "A"(val));
++}
++
++#define rdmsr(_m, _l, _h) \
++	do { \
++		unsigned long long _v = _rdmsr((_m)); \
++		(_l) = (unsigned int) _v; \
++		(_h) = (unsigned int) ((_v >> 32) & 0xFFFFFFFF); \
++	} while(0)
++
++static inline void wrmsr(unsigned int msr, unsigned int lo, unsigned int hi)
++{
++	unsigned long long val = (((unsigned long long) hi) << 32) | lo;
++	_wrmsr(msr, val);
++}
++
++#endif
+diff --git a/payloads/libpayload/include/486/arch/rdtsc.h b/payloads/libpayload/include/486/arch/rdtsc.h
+new file mode 100644
+index 0000000000..41ab24a9c7
+--- /dev/null
++++ b/payloads/libpayload/include/486/arch/rdtsc.h
+@@ -0,0 +1,41 @@
++/*
++ *
++ * Copyright (C) 2008 Advanced Micro Devices, Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#ifndef _ARCH_RDTSC_H
++#define _ARCH_RDTSC_H
++
++#include <stdint.h>
++
++static u64 rdtsc(void)
++{
++	u64 val;
++	__asm__ __volatile__ ("rdtsc" : "=A" (val));
++	return val;
++}
++
++#endif
+diff --git a/payloads/libpayload/include/486/arch/types.h b/payloads/libpayload/include/486/arch/types.h
+new file mode 100644
+index 0000000000..3f2eeaa466
+--- /dev/null
++++ b/payloads/libpayload/include/486/arch/types.h
+@@ -0,0 +1,59 @@
++/*
++ *
++ * Copyright (C) 2007 Uwe Hermann <uwe@hermann-uwe.de>
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#ifndef _ARCH_TYPES_H
++#define _ARCH_TYPES_H
++
++typedef unsigned char uint8_t;
++typedef unsigned char u8;
++typedef signed char int8_t;
++typedef signed char s8;
++
++typedef unsigned short uint16_t;
++typedef unsigned short u16;
++typedef signed short int16_t;
++typedef signed short s16;
++
++typedef unsigned int uint32_t;
++typedef unsigned int u32;
++typedef signed int int32_t;
++typedef signed int s32;
++
++typedef unsigned long long uint64_t;
++typedef unsigned long long u64;
++typedef signed long long int64_t;
++typedef signed long long s64;
++
++typedef long time_t;
++typedef long suseconds_t;
++
++#ifndef NULL
++#define NULL ((void *)0)
++#endif
++
++#endif
+diff --git a/payloads/libpayload/include/486/arch/virtual.h b/payloads/libpayload/include/486/arch/virtual.h
+new file mode 100644
+index 0000000000..a88138d25f
+--- /dev/null
++++ b/payloads/libpayload/include/486/arch/virtual.h
+@@ -0,0 +1,40 @@
++/*
++ *
++ * Copyright (C) 2008 coresystems GmbH
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *    derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#ifndef _ARCH_VIRTUAL_H
++#define _ARCH_VIRTUAL_H
++
++extern unsigned long virtual_offset;
++
++#define virt_to_phys(virt) ((unsigned long) (virt) + virtual_offset)
++#define phys_to_virt(phys) ((void *) ((unsigned long) (phys) - virtual_offset))
++
++#define virt_to_bus(addr) virt_to_phys(addr)
++#define bus_to_virt(addr) phys_to_virt(addr)
++
++#endif
+diff --git a/payloads/libpayload/libc/Makefile.inc b/payloads/libpayload/libc/Makefile.inc
+index 96d1312f65..1c890af526 100644
+--- a/payloads/libpayload/libc/Makefile.inc
++++ b/payloads/libpayload/libc/Makefile.inc
+@@ -37,7 +37,7 @@ libc-$(CONFIG_LP_LIBC) += qsort.c
+ libc-$(CONFIG_LP_LIBC) += hexdump.c
+ libc-$(CONFIG_LP_LIBC) += die.c
+ libc-$(CONFIG_LP_LIBC) += coreboot.c
+-libc-$(CONFIG_LP_LIBC) += fmap.c
++#libc-$(CONFIG_LP_LIBC) += fmap.c
+ libc-$(CONFIG_LP_LIBC) += fpmath.c
+ 
+ ifeq ($(CONFIG_LP_LIBC),y)
+diff --git a/payloads/libpayload/libc/malloc.c b/payloads/libpayload/libc/malloc.c
+index f94f33e5df..151a68512d 100644
+--- a/payloads/libpayload/libc/malloc.c
++++ b/payloads/libpayload/libc/malloc.c
+@@ -124,7 +124,7 @@ int dma_coherent(const void *ptr)
+ }
+ 
+ /* Find free block of size >= len */
+-static hdrtype_t volatile *find_free_block(int len, struct memory_type *type)
++static hdrtype_t volatile *find_free_block(size_t len, struct memory_type *type)
+ {
+ 	hdrtype_t header;
+ 	hdrtype_t volatile *ptr = (hdrtype_t volatile *)type->start;
+@@ -132,7 +132,7 @@ static hdrtype_t volatile *find_free_block(int len, struct memory_type *type)
+ 	/* Align the size. */
+ 	len = ALIGN_UP(len, HDRSIZE);
+ 
+-	if (!len || len > MAX_SIZE)
++	if (!len)
+ 		return (void *)NULL;
+ 
+ 	/* Make sure the region is setup correctly. */
+@@ -148,7 +148,7 @@ static hdrtype_t volatile *find_free_block(int len, struct memory_type *type)
+ 	/* Find some free space. */
+ 	do {
+ 		header = *ptr;
+-		int size = SIZE(header);
++		size_t size = SIZE(header);
+ 
+ 		if (!HAS_MAGIC(header) || size == 0) {
+ 			printf("memory allocator panic. (%s%s)\n",
+@@ -195,7 +195,7 @@ static void use_block(hdrtype_t volatile *ptr, int len)
+ 	}
+ }
+ 
+-static void *alloc(int len, struct memory_type *type)
++static void *alloc(size_t len, struct memory_type *type)
+ {
+ 	hdrtype_t volatile *ptr = find_free_block(len, type);
+ 
+@@ -347,7 +347,7 @@ struct align_region_t
+ {
+ 	/* If alignment is 0 then the region represents a large region which
+ 	 * has no metadata for tracking subelements. */
+-	int alignment;
++	unsigned alignment;
+ 	/* start in memory, and size in bytes */
+ 	void* start;
+ 	int size;
+diff --git a/payloads/libpayload/libc/time.c b/payloads/libpayload/libc/time.c
+index 6780008d4c..5f2bfa1fa7 100644
+--- a/payloads/libpayload/libc/time.c
++++ b/payloads/libpayload/libc/time.c
+@@ -50,13 +50,13 @@ static struct {
+ 
+ static void update_clock(void)
+ {
+-	u64 delta = timer_raw_value() - clock.ticks;
++	u64 delta = 0;
+ 	int secs;
+ 	static uint64_t ticks_per_sec = 0;
+ 	static uint64_t ticks_per_usec = 0;
+ 	if (!ticks_per_sec) {
+-		ticks_per_sec = timer_hz();
+-		ticks_per_usec = timer_hz() / 1000000;
++		ticks_per_sec = 1000000;
++		ticks_per_usec = 1;
+ 	}
+ 
+ 	clock.ticks += delta;
+@@ -97,7 +97,7 @@ static void gettimeofday_init(void)
+ 	struct tm tm;
+ 
+ 	rtc_read_clock(&tm);
+-	clock.ticks = rdtsc();
++	clock.ticks = 0;
+ 
+ 	/* Calculate the number of days in the year so far */
+ 	days = day_of_year(tm.tm_mon, tm.tm_mday, tm.tm_year + 1900);
+@@ -118,7 +118,7 @@ static void gettimeofday_init(void)
+ static void gettimeofday_init(void)
+ {
+ 	/* Record the number of ticks */
+-	clock.ticks = timer_raw_value();
++	clock.ticks = 0;
+ }
+ #endif
+ 
+@@ -163,24 +163,12 @@ int gettimeofday(struct timeval *tv, void *tz)
+ __attribute__((weak))
+ void arch_ndelay(uint64_t ns)
+ {
+-	uint64_t delta = ns * timer_hz() / NSECS_PER_SEC;
+-	uint64_t start = timer_raw_value();
+-	while (timer_raw_value() - start < delta) ;
++        for (uint64_t t=0;t< (ns >> 3);t++) {
++        }
+ }
+ 
+ u64 timer_us(u64 base)
+ {
+-	static u64 hz;
+-
+-	// Only check timer_hz once. Assume it doesn't change.
+-	if (hz == 0) {
+-		hz = timer_hz();
+-		if (hz < 1000000) {
+-			printf("Timer frequency %" PRIu64 " is too low, "
+-			       "must be at least 1MHz.\n", hz);
+-			halt();
+-		}
+-	}
+ 
+-	return (1000000 * timer_raw_value()) / hz - base;
++	return 1000000 ;
+ }
+diff --git a/payloads/libpayload/tests/Makefile b/payloads/libpayload/tests/Makefile
+index 8c55053af7..4151663926 100644
+--- a/payloads/libpayload/tests/Makefile
++++ b/payloads/libpayload/tests/Makefile
+@@ -1,8 +1,8 @@
+ CC=gcc -g -m32
+-INCLUDES=-I. -I../include -I../include/x86
++INCLUDES=-I. -I../include -I../include/486
+ TARGETS=cbfs-x86-test
+ 
+-cbfs-x86-test: cbfs-x86-test.c ../arch/x86/rom_media.c ../libcbfs/ram_media.c ../libcbfs/cbfs.c
++cbfs-x86-test: cbfs-x86-test.c ../arch/486/rom_media.c ../libcbfs/ram_media.c ../libcbfs/cbfs.c
+ 	$(CC) -o $@ $^ $(INCLUDES)
+ 
+ 
+-- 
+2.46.1
+

@@ -1,0 +1,30 @@
+From 29e2587e416827d8036e14ca3c1a0e25454d2bf1 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:32:33 +0200
+Subject: [PATCH 20/27] "I'm alive" debug message to ttyS0
+
+---
+ src/romlayout.S | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/romlayout.S b/src/romlayout.S
+index c4a4635e..bdbb72c7 100644
+--- a/src/romlayout.S
++++ b/src/romlayout.S
+@@ -592,6 +592,13 @@ entry_18:
+ 
+         ORG 0xe05b
+ entry_post:
++#if 0
++//pc2005
++	movb $'*',%al
++	mov $0x3f8, %dx
++	outb %al,%dx
++#endif
++
+         cmpl $0, %cs:HaveRunPost                // Check for resume/reboot
+         jnz entry_resume
+         ENTRY_INTO32 _cfunc32flat_handle_post   // Normal entry point
+-- 
+2.46.1
+

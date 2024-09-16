@@ -1,0 +1,56 @@
+From 0e1e96a4752a626c7fa404ba225a52278ec98daf Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:55:21 +0200
+Subject: [PATCH 06/11] Remove luajit from minetest
+
+Less program size
+---
+ package/minetest/Config.in   | 2 --
+ package/minetest/minetest.mk | 4 ++--
+ 2 files changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/package/minetest/Config.in b/package/minetest/Config.in
+index 4e139ac3e2..b6cf653ecc 100644
+--- a/package/minetest/Config.in
++++ b/package/minetest/Config.in
+@@ -5,7 +5,6 @@ config BR2_PACKAGE_MINETEST
+ 	depends on BR2_TOOLCHAIN_HAS_THREADS
+ 	depends on BR2_PACKAGE_XORG7 # irrlichtMt (bundled)
+ 	depends on BR2_PACKAGE_HAS_LIBGL # irrlichtMt (bundled)
+-	depends on BR2_PACKAGE_LUAJIT
+ 	select BR2_PACKAGE_GMP
+ 	select BR2_PACKAGE_JSONCPP
+ 	select BR2_PACKAGE_SQLITE
+@@ -53,7 +52,6 @@ comment "sound support needs a toolchain w/ threads NPTL"
+ endif
+ 
+ comment "minetest needs a toolchain w/ C++, gcc >= 5.1, threads"
+-	depends on BR2_PACKAGE_LUAJIT_ARCH_SUPPORTS
+ 	depends on !BR2_INSTALL_LIBSTDCPP \
+ 		|| !BR2_TOOLCHAIN_GCC_AT_LEAST_5 \
+ 		|| !BR2_TOOLCHAIN_HAS_THREADS
+diff --git a/package/minetest/minetest.mk b/package/minetest/minetest.mk
+index 3904bd687c..317e869b10 100644
+--- a/package/minetest/minetest.mk
++++ b/package/minetest/minetest.mk
+@@ -10,7 +10,7 @@ MINETEST_LICENSE = LGPL-2.1+ (code), CC-BY-SA-3.0 (textures and sounds), Zlib (i
+ MINETEST_LICENSE_FILES = LICENSE.txt lib/irrlichtmt/doc/irrlicht-license.txt
+ MINETEST_CPE_ID_VENDOR = minetest
+ 
+-MINETEST_DEPENDENCIES = gmp jsoncpp luajit sqlite zlib zstd
++MINETEST_DEPENDENCIES = gmp jsoncpp sqlite zlib zstd
+ 
+ MINETEST_IRRLICHTMT_VERSION = 1.9.0mt8
+ MINETEST_EXTRA_DOWNLOADS = $(call github,minetest,irrlicht,$(MINETEST_IRRLICHTMT_VERSION))/irrlicht-$(MINETEST_IRRLICHTMT_VERSION).tar.gz
+@@ -28,7 +28,7 @@ MINETEST_POST_EXTRACT_HOOKS += MINETEST_IRRLICHTMT_EXTRACT
+ MINETEST_CONF_OPTS = \
+ 	-DDEFAULT_RUN_IN_PLACE=OFF \
+ 	-DENABLE_GLES=OFF \
+-	-DENABLE_LUAJIT=ON \
++	-DENABLE_LUAJIT=OFF \
+ 	-DENABLE_CURSES=OFF \
+ 	-DAPPLY_LOCALE_BLACKLIST=OFF \
+ 	-DENABLE_SYSTEM_GMP=ON \
+-- 
+2.46.1
+

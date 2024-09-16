@@ -1,0 +1,26 @@
+From ef209b4f62ed0dec4858589c74c5b02d51fb1bc9 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:29:06 +0200
+Subject: [PATCH 14/27] Allow booting from floppy outside QEMU
+
+but disable it until boot ordering (so it doesn't lag boot)
+---
+ src/hw/floppy.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/hw/floppy.c b/src/hw/floppy.c
+index 9e6647d4..14738d9f 100644
+--- a/src/hw/floppy.c
++++ b/src/hw/floppy.c
+@@ -155,7 +155,7 @@ floppy_setup(void)
+         return;
+     dprintf(3, "init floppy drives\n");
+ 
+-    if (CONFIG_QEMU) {
++    if (CONFIG_QEMU || 0) {        //TODO floppy disabled for now
+         u8 type = rtc_read(CMOS_FLOPPY_DRIVE_TYPE);
+         if (type & 0xf0)
+             addFloppy(0, type >> 4);
+-- 
+2.46.1
+

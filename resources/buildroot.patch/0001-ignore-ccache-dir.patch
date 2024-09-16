@@ -1,0 +1,23 @@
+From 1c297fe9f3a28c4e2060103abb32279cea926b6c Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 06:03:05 +0200
+Subject: [PATCH 01/11] ignore ccache dir
+
+---
+ .gitignore | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/.gitignore b/.gitignore
+index bb02d9f572..b56cf75d46 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,5 +1,6 @@
+ /output
+ /dl
++/.buildroot-ccache
+ /.auto.deps
+ /.config.cmd
+ /.config.old
+-- 
+2.46.1
+

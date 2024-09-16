@@ -1,0 +1,29 @@
+From f18cb40d3acd2536499b8f70f19d175154188228 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:26:55 +0200
+Subject: [PATCH 11/27] Init PIT timer
+
+So MSDOS keyb.com doesn't freeze
+---
+ src/hw/timer.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/hw/timer.c b/src/hw/timer.c
+index b6f102e3..7f9f4403 100644
+--- a/src/hw/timer.c
++++ b/src/hw/timer.c
+@@ -280,4 +280,11 @@ pit_setup(void)
+     // maximum count of 0000H = 18.2Hz
+     outb(0x0, PORT_PIT_COUNTER0);
+     outb(0x0, PORT_PIT_COUNTER0);
++
++    //TODO required by keyb.com
++    // timer1: binary count, 16bit count, mode 2
++    outb(PM_SEL_TIMER1|PM_ACCESS_WORD|PM_MODE2|PM_CNT_BINARY, PORT_PIT_MODE);
++    // maximum count of 0012H = 66.3Hz
++    outb(0x12, PORT_PIT_COUNTER1);
++    outb(0x0, PORT_PIT_COUNTER1);
+ }
+-- 
+2.46.1
+

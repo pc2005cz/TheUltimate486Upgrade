@@ -1,0 +1,36 @@
+From 57f3359b712228e79b0d488f951f2063bda153c4 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:17:24 +0200
+Subject: [PATCH 01/27] Add dummy access for writeb/w/l
+
+Some controllers may have problems with read/modify/write access
+Maybe incompatible barrier for 486.
+---
+ src/x86.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/x86.h b/src/x86.h
+index 43a9e6d8..4dadaf19 100644
+--- a/src/x86.h
++++ b/src/x86.h
+@@ -207,14 +207,17 @@ static inline void smp_wmb(void) {
+ }
+ 
+ static inline void writel(void *addr, u32 val) {
++	*(volatile u32 *)addr;
+     barrier();
+     *(volatile u32 *)addr = val;
+ }
+ static inline void writew(void *addr, u16 val) {
++	*(volatile u16 *)addr;
+     barrier();
+     *(volatile u16 *)addr = val;
+ }
+ static inline void writeb(void *addr, u8 val) {
++	*(volatile u8 *)addr;
+     barrier();
+     *(volatile u8 *)addr = val;
+ }
+-- 
+2.46.1
+

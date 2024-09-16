@@ -1,0 +1,63 @@
+From a52acd4478e9617288acf46a1a36847e832f0752 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:58:19 +0200
+Subject: [PATCH 07/11] Patch for Mesa to disable hardcoded SSE build
+
+---
+ package/mesa3d/9000-pc2005-disable-sse4.patch | 44 +++++++++++++++++++
+ 1 file changed, 44 insertions(+)
+ create mode 100644 package/mesa3d/9000-pc2005-disable-sse4.patch
+
+diff --git a/package/mesa3d/9000-pc2005-disable-sse4.patch b/package/mesa3d/9000-pc2005-disable-sse4.patch
+new file mode 100644
+index 0000000000..492bd763f4
+--- /dev/null
++++ b/package/mesa3d/9000-pc2005-disable-sse4.patch
+@@ -0,0 +1,44 @@
++--- orig/meson.build	2023-09-28 23:11:25.000000000 +0200
+++++ my/meson.build	2023-11-20 12:02:28.766365360 +0100
++@@ -1125,41 +1125,6 @@
++ sse2_args = []
++ sse41_args = []
++ with_sse41 = false
++-if host_machine.cpu_family().startswith('x86')
++-  pre_args += '-DUSE_SSE41'
++-  with_sse41 = true
++-
++-  if cc.get_id() != 'msvc'
++-    sse41_args = ['-msse4.1']
++-
++-    if host_machine.cpu_family() == 'x86'
++-      # x86_64 have sse2 by default, so sse2 args only for x86
++-      sse2_arg = ['-msse2', '-mfpmath=sse']
++-      sse2_args = [sse2_arg, '-mstackrealign']
++-      if get_option('sse2')
++-        # These settings make generated GCC code match MSVC and follow
++-        # GCC advice on https://gcc.gnu.org/wiki/FloatingPointMath#x86note
++-        #
++-        # NOTE: We need to ensure stack is realigned given that we
++-        # produce shared objects, and have no control over the stack
++-        # alignment policy of the application. Therefore we need
++-        # -mstackrealign or -mincoming-stack-boundary=2.
++-        #
++-        # XXX: We could have SSE without -mstackrealign if we always used
++-        # __attribute__((force_align_arg_pointer)), but that's not
++-        # always the case.
++-        c_cpp_args += sse2_args
++-        # sse2_args are adopted into c_cpp_args to avoid duplicated sse2 command line args
++-        sse2_arg = []
++-        sse2_args = []
++-      else
++-        # GCC on x86 (not x86_64) with -msse* assumes a 16 byte aligned stack, but
++-        # that's not guaranteed
++-        sse41_args += '-mstackrealign'
++-      endif
++-    endif
++-  endif
++-endif
++ 
++ # Check for GCC style atomics
++ dep_atomic = null_dep
+-- 
+2.46.1
+

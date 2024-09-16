@@ -1,0 +1,24 @@
+From e4521470f6a72e38d2af9e9b93603d5fc37e002d Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:58:51 +0200
+Subject: [PATCH 09/11] don't build headless java
+
+---
+ package/openjdk/openjdk.mk | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/package/openjdk/openjdk.mk b/package/openjdk/openjdk.mk
+index f4e1920e6c..8f49b83b9b 100644
+--- a/package/openjdk/openjdk.mk
++++ b/package/openjdk/openjdk.mk
+@@ -85,7 +85,6 @@ OPENJDK_CONF_OPTS = \
+ 	--disable-full-docs \
+ 	--disable-manpages \
+ 	--disable-warnings-as-errors \
+-	--enable-headless-only \
+ 	--enable-openjdk-only \
+ 	--enable-unlimited-crypto \
+ 	--openjdk-target=$(GNU_TARGET_NAME) \
+-- 
+2.46.1
+

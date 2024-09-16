@@ -1,0 +1,86 @@
+From 4865e1ce33150842c2b8f4086bea3323623c6eec Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:51:18 +0200
+Subject: [PATCH 05/11] add openttd package
+
+---
+ package/Config.in          |  1 +
+ package/openttd/Config.in  | 14 ++++++++++++++
+ package/openttd/openttd.mk | 32 ++++++++++++++++++++++++++++++++
+ 3 files changed, 47 insertions(+)
+ create mode 100644 package/openttd/Config.in
+ create mode 100644 package/openttd/openttd.mk
+
+diff --git a/package/Config.in b/package/Config.in
+index 5a3410d758..8053f850c1 100644
+--- a/package/Config.in
++++ b/package/Config.in
+@@ -306,6 +306,7 @@ menu "Games"
+ 	source "package/supertux/Config.in"
+ 	source "package/supertuxkart/Config.in"
+ 	source "package/xorcurses/Config.in"
++	source "package/openttd/Config.in"
+ endmenu
+ 
+ menu "Graphic libraries and applications (graphic/text)"
+diff --git a/package/openttd/Config.in b/package/openttd/Config.in
+new file mode 100644
+index 0000000000..d23ce93db8
+--- /dev/null
++++ b/package/openttd/Config.in
+@@ -0,0 +1,14 @@
++config BR2_PACKAGE_OPENTTD
++	bool "openttd"
++	select BR2_PACKAGE_LIBZLIB
++	select BR2_PACKAGE_LIBPNG
++	select BR2_PACKAGE_SDL
++	select BR2_PACKAGE_FREETYPE
++	select BR2_PACKAGE_FONTCONFIG
++	select BR2_PACKAGE_ICU
++	select BR2_PACKAGE_OPENTTDH
++	select BR2_PACKAGE_XZ
++	help
++	  OpenTTD package.
++
++
+diff --git a/package/openttd/openttd.mk b/package/openttd/openttd.mk
+new file mode 100644
+index 0000000000..35686a6b56
+--- /dev/null
++++ b/package/openttd/openttd.mk
+@@ -0,0 +1,32 @@
++################################################################################
++#
++# openttd
++#
++################################################################################
++
++OPENTTD_SITE = https://github.com/OpenTTD/OpenTTD.git
++OPENTTD_VERSION = 13.4
++OPENTTD_SITE_METHOD = git
++OPENTTD_GIT_SUBMODULES = YES
++OPENTTD_CONF_OPTS =
++OPENTTD_SUPPORTS_IN_SOURCE_BUILD=NO
++OPENTTD_DEPENDENCIES = xlib_libX11 sdl zlib xz libpng sdl freetype fontconfig icu host-openttd host-pkgconf
++HOST_OPENTTD_DEPENDENCIES =
++#OPENTTD_CXXFLAGS +=
++#OPENTTD_CONF_OPTS += -DCMAKE_CXX_FLAGS="$(TARGET_CXXFLAGS) $(OPENTTD_CXXFLAGS)"
++
++OPENTTD_CONF_OPTS += -DSSE_FOUND:INTERNAL=0
++
++define HOST_OPENTTD_BUILD_CMDS
++	$(HOST_MAKE_ENV) $(OPENTTD_MAKE_ENV) $(MAKE1) $(OPENTTD_MAKE_OPTS) -C $(HOST_OPENTTD_BUILDDIR) strgen settingsgen
++endef
++
++define HOST_OPENTTD_INSTALL_CMDS
++	cp $(HOST_OPENTTD_BUILDDIR)/src/strgen/strgen $(HOST_DIR)/bin
++	cp $(HOST_OPENTTD_BUILDDIR)/src/settingsgen/settingsgen $(HOST_DIR)/bin
++endef
++
++$(eval $(cmake-package))
++$(eval $(host-cmake-package))
++
++#(encouraged) liblzma: (de)compressing of savegames (1.1.0 and later)
+-- 
+2.46.1
+

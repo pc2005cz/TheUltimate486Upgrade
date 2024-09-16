@@ -1,0 +1,519 @@
+From ca98a5f922b2f4cb555d280c34add292ed69f93c Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:06:52 +0200
+Subject: [PATCH 19/26] Add biostar mb8433 motherboard support
+
+"working"
+---
+ src/mainboard/biostar/mb8433/Kconfig        |  32 +++++
+ src/mainboard/biostar/mb8433/Kconfig.name   |   4 +
+ src/mainboard/biostar/mb8433/Makefile.inc   |   5 +
+ src/mainboard/biostar/mb8433/board_info.txt |   8 ++
+ src/mainboard/biostar/mb8433/bootblock.c    |  10 ++
+ src/mainboard/biostar/mb8433/cmos.layout    |  31 +++++
+ src/mainboard/biostar/mb8433/config_seabios | 145 ++++++++++++++++++++
+ src/mainboard/biostar/mb8433/devicetree.cb  |  21 +++
+ src/mainboard/biostar/mb8433/irq_tables.c   |  39 ++++++
+ src/mainboard/biostar/mb8433/mainboard.c    | 112 +++++++++++++++
+ src/mainboard/biostar/mb8433/smbios.c       |  12 ++
+ 11 files changed, 419 insertions(+)
+ create mode 100644 src/mainboard/biostar/mb8433/Kconfig
+ create mode 100644 src/mainboard/biostar/mb8433/Kconfig.name
+ create mode 100644 src/mainboard/biostar/mb8433/Makefile.inc
+ create mode 100644 src/mainboard/biostar/mb8433/board_info.txt
+ create mode 100644 src/mainboard/biostar/mb8433/bootblock.c
+ create mode 100644 src/mainboard/biostar/mb8433/cmos.layout
+ create mode 100644 src/mainboard/biostar/mb8433/config_seabios
+ create mode 100644 src/mainboard/biostar/mb8433/devicetree.cb
+ create mode 100644 src/mainboard/biostar/mb8433/irq_tables.c
+ create mode 100644 src/mainboard/biostar/mb8433/mainboard.c
+ create mode 100644 src/mainboard/biostar/mb8433/smbios.c
+
+diff --git a/src/mainboard/biostar/mb8433/Kconfig b/src/mainboard/biostar/mb8433/Kconfig
+new file mode 100644
+index 0000000000..85d3351d47
+--- /dev/null
++++ b/src/mainboard/biostar/mb8433/Kconfig
+@@ -0,0 +1,32 @@
++if BOARD_BIOSTAR_MB8433
++
++config BOARD_SPECIFIC_OPTIONS
++	def_bool y
++	select CPU_486
++	select BOARD_ROMSIZE_KB_128
++	select MISSING_BOARD_RESET
++	select NORTHBRIDGE_UMC_UM8881
++	select SOUTHBRIDGE_UMC_UM8886
++	select SUPERIO_UMC_UM8663BF
++	select HAVE_OPTION_TABLE
++#	select HAVE_CMOS_DEFAULT
++	select HAVE_PIRQ_TABLE
++	select NO_MONOTONIC_TIMER
++
++
++#TODO TODO TODO TODO TODO TODO TODO
++#https://elixir.bootlin.com/coreboot/4.7/A/ident/pirq_assign_irqs
++#required (sets PCI IRQ) if you want to boot from usb, also required if kernel doesn't  reroute
++	select PIRQ_ROUTE
++
++config MAINBOARD_DIR
++	default "biostar/mb8433"
++
++config MAINBOARD_PART_NUMBER
++	default "MB8433"
++
++config IRQ_SLOT_COUNT
++	int
++	default 3
++
++endif # BOARD_BIOSTAR_MB8433
+diff --git a/src/mainboard/biostar/mb8433/Kconfig.name b/src/mainboard/biostar/mb8433/Kconfig.name
+new file mode 100644
+index 0000000000..68244d009c
+--- /dev/null
++++ b/src/mainboard/biostar/mb8433/Kconfig.name
+@@ -0,0 +1,4 @@
++config BOARD_BIOSTAR_MB8433
++	bool "Biostar MB8433"
++	help
++	  experimental
+diff --git a/src/mainboard/biostar/mb8433/Makefile.inc b/src/mainboard/biostar/mb8433/Makefile.inc
+new file mode 100644
+index 0000000000..067135c8ed
+--- /dev/null
++++ b/src/mainboard/biostar/mb8433/Makefile.inc
+@@ -0,0 +1,5 @@
++bootblock-y += bootblock.c
++# romstage-y += romstage.c
++
++ramstage-$(CONFIG_GENERATE_PIRQ_TABLE) += irq_tables.c
++ramstage-$(CONFIG_GENERATE_SMBIOS_TABLES) += smbios.c
+diff --git a/src/mainboard/biostar/mb8433/board_info.txt b/src/mainboard/biostar/mb8433/board_info.txt
+new file mode 100644
+index 0000000000..41d874d539
+--- /dev/null
++++ b/src/mainboard/biostar/mb8433/board_info.txt
+@@ -0,0 +1,8 @@
++Board name: Biostar MB8433
++Category: retro
++Board URL: https://theretroweb.com/motherboards/s/biostar-mb-8425uud-a
++ROM package: DIP-32
++ROM protocol: Parallel
++ROM socketed: y
++Flashrom support: y
++Release year: 1995
+diff --git a/src/mainboard/biostar/mb8433/bootblock.c b/src/mainboard/biostar/mb8433/bootblock.c
+new file mode 100644
+index 0000000000..65bd92f92a
+--- /dev/null
++++ b/src/mainboard/biostar/mb8433/bootblock.c
+@@ -0,0 +1,10 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include <bootblock_common.h>
++// #include <superio/winbond/w83787if/winbond.h>
++// #include <superio/winbond/w83977tf/w83977tf.h>
++
++void bootblock_mainboard_early_init(void)
++{
++	//enable superio serial
++}
+diff --git a/src/mainboard/biostar/mb8433/cmos.layout b/src/mainboard/biostar/mb8433/cmos.layout
+new file mode 100644
+index 0000000000..94556edabf
+--- /dev/null
++++ b/src/mainboard/biostar/mb8433/cmos.layout
+@@ -0,0 +1,31 @@
++## SPDX-License-Identifier: GPL-2.0-only
++
++#####  <start-bit> <bit-length> <config> <config-id> <parameter-name>
++#####  e:enum h:hex s:string r:reserved
++
++
++# -----------------------------------------------------------------
++entries
++
++# -----------------------------------------------------------------
++0	120	r	0	reserved_memory
++128	4	e	14	floppy_a
++132	4	e	14	floppy_b
++
++# -----------------------------------------------------------------
++enumerations
++
++14      0       Not Installed
++14      1       5.25 360k
++14      2       5.25 1.2M
++14      3       3.5 720k
++14      4       3.5 1.44M
++14      5       3.5 2.88M
++14      6       5.25 160k
++14      7       5.25 180k
++14      8       5.25 320k
++
++# -----------------------------------------------------------------
++checksums
++
++checksum 392 983 984
+diff --git a/src/mainboard/biostar/mb8433/config_seabios b/src/mainboard/biostar/mb8433/config_seabios
+new file mode 100644
+index 0000000000..fe20374c14
+--- /dev/null
++++ b/src/mainboard/biostar/mb8433/config_seabios
+@@ -0,0 +1,145 @@
++#
++# Automatically generated file; DO NOT EDIT.
++# SeaBIOS Configuration
++#
++
++#
++# General Features
++#
++CONFIG_COREBOOT=y
++# CONFIG_QEMU is not set
++# CONFIG_CSM is not set
++# CONFIG_QEMU_HARDWARE is not set
++CONFIG_THREADS=y
++CONFIG_RELOCATE_INIT=y
++CONFIG_BOOTMENU=y
++# CONFIG_BOOTSPLASH is not set
++CONFIG_BOOTORDER=y
++CONFIG_HOST_BIOS_GEOMETRY=y
++# CONFIG_COREBOOT_FLASH is not set
++#######CONFIG_COREBOOT_FLASH=y
++#######CONFIG_LZMA=y
++#######CONFIG_CBFS_LOCATION=0
++# CONFIG_MULTIBOOT is not set
++
++# CONFIG_ENTRY_EXTRASTACK is not set
++# CONFIG_ENTRY_EXTRASTACK=y
++# without EXTRASTACK INT handler with DEBUG_LEVEL crashes
++
++
++# NOTICE upper memory will be in C-F segments, it needs to be RW-able, extrastack will be located here
++CONFIG_MALLOC_UPPERMEMORY=y
++# # # # # # CONFIG_MALLOC_UPPERMEMORY is not set
++
++CONFIG_ROM_SIZE=0
++
++#
++# Hardware support
++#
++CONFIG_ATA=y
++CONFIG_ATA_DMA=y
++CONFIG_ATA_PIO32=y
++CONFIG_AHCI=y
++# CONFIG_SDCARD is not set
++# CONFIG_MEGASAS is not set
++
++
++# # # # CONFIG_FLOPPY=y
++# CONFIG_FLASH_FLOPPY is not set
++
++
++# CONFIG_FLASH_FLOPPY is not set
++# CONFIG_NVME is not set
++CONFIG_PS2PORT=y
++
++CONFIG_USB=y
++CONFIG_USB_UHCI=y
++CONFIG_USB_OHCI=y
++# # # # # CONFIG_USB is not set
++# # # # # CONFIG_USB_UHCI is not set
++# # # # # CONFIG_USB_OHCI is not set
++
++
++CONFIG_USB_EHCI=y
++# CONFIG_USB_EHCI is not set
++#### CONFIG_USB_XHCI=y
++# CONFIG_USB_XHCI is not set
++
++
++CONFIG_USB_MSC=y
++# # # # # # # CONFIG_USB_MSC is not set
++
++
++CONFIG_USB_UAS=y
++# # # # # # # # # CONFIG_USB_UAS is not set
++
++
++CONFIG_USB_HUB=y
++######CONFIG_USB_KEYBOARD=y
++######CONFIG_USB_MOUSE=y
++
++# # # # # # # # # CONFIG_USB_HUB is not set
++# CONFIG_USB_KEYBOARD is not set
++# CONFIG_USB_MOUSE is not set
++
++
++CONFIG_SERIAL=y
++# # # # # CONFIG_SERCON=y
++# CONFIG_SERCON is not set
++
++CONFIG_LPT=y
++CONFIG_RTC_TIMER=y
++CONFIG_HARDWARE_IRQ=y
++# CONFIG_PMTIMER is not set
++# CONFIG_TSC_TIMER is not set
++
++#
++# BIOS interfaces
++#
++CONFIG_DRIVES=y
++CONFIG_CDROM_BOOT=y
++CONFIG_CDROM_EMU=y
++
++CONFIG_PCIBIOS=y
++CONFIG_APMBIOS=y
++CONFIG_PNPBIOS=y
++# # # # CONFIG_PCIBIOS is not set
++# # # CONFIG_APMBIOS is not set
++# # # # CONFIG_PNPBIOS is not set
++
++
++CONFIG_OPTIONROMS=y
++CONFIG_PMM=y
++CONFIG_BOOT=y
++CONFIG_KEYBOARD=y
++# # # CONFIG_KBD_CALL_INT15_4F=y
++# CONFIG_KBD_CALL_INT15_4F is not set
++
++CONFIG_MOUSE=y
++# # # CONFIG_MOUSE is not set
++
++####3# CONFIG_S3_RESUME=y
++# CONFIG_S3_RESUME is not set
++# CONFIG_VGAHOOKS is not set
++# CONFIG_DISABLE_A20 is not set
++
++#
++# VGA ROM
++#
++CONFIG_NO_VGABIOS=y
++# CONFIG_VGA_COREBOOT is not set
++# CONFIG_BUILD_VGABIOS is not set
++
++#
++# Debugging
++#
++
++CONFIG_DEBUG_LEVEL=0
++
++# CONFIG_DEBUG_LEVEL=3
++# CONFIG_DEBUG_SERIAL=y
++# CONFIG_DEBUG_SERIAL_PORT=0x3f8
++
++# CONFIG_DEBUG_LEVEL=6
++
++# CONFIG_DEBUG_COREBOOT is not set
+diff --git a/src/mainboard/biostar/mb8433/devicetree.cb b/src/mainboard/biostar/mb8433/devicetree.cb
+new file mode 100644
+index 0000000000..5b7d063591
+--- /dev/null
++++ b/src/mainboard/biostar/mb8433/devicetree.cb
+@@ -0,0 +1,21 @@
++chip northbridge/umc/um8881
++
++	device cpu_cluster 0 on ops um8881_cpu_bus_ops end
++
++	device domain 0 on
++		ops um8881_pci_domain_ops
++
++		device pci 10.0 on end # host bridge
++
++		device pci 03.0 on end # PCI1 near ISA
++		device pci 04.0 on end # PCI2 middle
++		device pci 05.0 on end # PCI3 near RAM
++
++		chip southbridge/umc/um8886
++			device pci 12.0 on end # ISA bridge
++			device pci 12.1 on end # IDE
++
++			#chip superio/umc/um8663af
++		end
++	end
++end
+diff --git a/src/mainboard/biostar/mb8433/irq_tables.c b/src/mainboard/biostar/mb8433/irq_tables.c
+new file mode 100644
+index 0000000000..5775d51943
+--- /dev/null
++++ b/src/mainboard/biostar/mb8433/irq_tables.c
+@@ -0,0 +1,39 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include <arch/pirq_routing.h>
++#include <device/pci_ids.h>
++
++// #define IRQ_MASK 0xdef8
++//e.g. uart init dislike being on the same IRQ as PCI (uart IRQ will be disabled in probe)
++#define IRQ_MASK 0x8e00
++
++static const struct irq_routing_table mb8433_irq_routing_table = {
++	PIRQ_SIGNATURE,
++	PIRQ_VERSION,
++	32 + 16 * CONFIG_IRQ_SLOT_COUNT,/* Max. number of devices on the bus */
++	0x00,			/* Interrupt router bus */
++	(0x12 << 3) | 0x0,	/* Interrupt router device */
++	0,			/* IRQs devoted exclusively to PCI usage */
++	PCI_VID_UMC,		/* Vendor */
++	PCI_DID_UMC_UM8886A,	/* Device */	//isa bridge (IMO should be ISA bridge)
++	0,			/* Miniport data */
++	{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, /* u8 rfu[11] */
++
++	//TODO enable CONFIG_DEBUG_PIRQ to compute checksum
++	0x20,			/* Checksum */
++	/* clang-format off */
++	{
++		/* bus,       dev|fn, {link, bitmap}, {link, bitmap}, {link, bitmap}, {link, bitmap},  slot, rfu */
++		{0x00,(0x3 << 3)|0x0, {{1, IRQ_MASK}, {2, IRQ_MASK}, {3, IRQ_MASK}, {4, IRQ_MASK}}, 0x1, 0x0}, /* near ISA */
++		{0x00,(0x4 << 3)|0x0, {{2, IRQ_MASK}, {3, IRQ_MASK}, {4, IRQ_MASK}, {1, IRQ_MASK}}, 0x2, 0x0}, /* middle */
++		{0x00,(0x5 << 3)|0x0, {{3, IRQ_MASK}, {4, IRQ_MASK}, {1, IRQ_MASK}, {2, IRQ_MASK}}, 0x3, 0x0}, /* near RAM */
++	}
++	/* clang-format on */
++};
++
++//TODO disable bits used for incompatible ISA
++
++unsigned long write_pirq_routing_table(unsigned long addr)
++{
++	return copy_pirq_routing_table(addr, &mb8433_irq_routing_table);
++}
+diff --git a/src/mainboard/biostar/mb8433/mainboard.c b/src/mainboard/biostar/mb8433/mainboard.c
+new file mode 100644
+index 0000000000..cdee25bf7b
+--- /dev/null
++++ b/src/mainboard/biostar/mb8433/mainboard.c
+@@ -0,0 +1,112 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <console/console.h>
++#include <device/pci_ops.h>
++#include <arch/io.h>
++
++
++#define PORT_INDEX	0x108
++#define PORT_DATA	0x109
++
++#define UM8663_CR0	0xc0
++#define UM8663_CR1	0xc1
++#define UM8663_CR2	0xc2
++#define UM8663_CR3	0xc3
++#define UM8663_CR4	0xc4
++
++
++struct umc_sio_cfg_entry {
++	u8 idx;
++	u8 val;
++};
++
++
++/*
++poweron values
++C0: 2f
++C1: 9f
++C2: 81
++C3: ff
++C4: ff
++*/
++
++//taken from linux
++static const struct umc_sio_cfg_entry sio_table[] = {
++	{UM8663_CR0, 0x0f},
++	{UM8663_CR1, 0x8f},
++	// {UM8663_CR1, 0x8f | 0x10},	//0x10 if floppy?
++	// {UM8663_CR2, 0x80},	//81
++};
++
++
++/**
++ * Mainboard specific enables.
++ *
++ * @param chip_info Ignored
++ */
++static void mainboard_init(void *chip_info)
++{
++	printk(BIOS_DEBUG, "*** mainboard_init\n");
++
++
++	//TODO into southbridge
++
++#if 0
++	for (unsigned idx=0;idx<ARRAY_SIZE(sio_table);idx++) {
++		//unlock
++		outb(0xaa, PORT_INDEX);
++
++		outb(sio_table[idx].idx, PORT_INDEX);
++		printk(BIOS_DEBUG, "%2hhx: %02hhx\n", sio_table[idx].idx, inb(PORT_DATA));
++
++		//lock
++		outb(0x55, PORT_INDEX);
++	}
++#endif
++
++/*
++ * c0: 0f
++c1: 8f
++c2: 81
++
++ * */
++	for (unsigned idx=0;idx<ARRAY_SIZE(sio_table);idx++) {
++		//unlock
++		outb(0xaa, PORT_INDEX);
++
++		// for (volatile unsigned delay=0;delay<1000;delay++) {}
++
++		outb(sio_table[idx].idx, PORT_INDEX);
++
++		// for (volatile unsigned delay=0;delay<1000;delay++) {}
++
++		outb(sio_table[idx].val, PORT_DATA);
++
++		// for (volatile unsigned delay=0;delay<1000;delay++) {}
++
++		//lock
++		outb(0x55, PORT_INDEX);
++	}
++
++#if 1
++	printk(BIOS_DEBUG, "SIO dump:\n");
++
++	for (unsigned idx=0;idx<ARRAY_SIZE(sio_table);idx++) {
++		//unlock
++		outb(0xaa, PORT_INDEX);
++
++		// must be written immediatelly
++
++		outb(sio_table[idx].idx, PORT_INDEX);
++		printk(BIOS_DEBUG, "%2hhx: %02hhx\n", sio_table[idx].idx, inb(PORT_DATA));
++
++		//lock
++		outb(0x55, PORT_INDEX);
++	}
++#endif
++
++}
++
++struct chip_operations mainboard_ops = {
++	.init = mainboard_init
++};
+diff --git a/src/mainboard/biostar/mb8433/smbios.c b/src/mainboard/biostar/mb8433/smbios.c
+new file mode 100644
+index 0000000000..fd321b05c9
+--- /dev/null
++++ b/src/mainboard/biostar/mb8433/smbios.c
+@@ -0,0 +1,12 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <smbios.h>
++
++#define VOLTAGE_5	(1 << 0)
++#define VOLTAGE_3_3	(1 << 1)
++
++/* Returns the processor voltage in legacy bitfield */
++unsigned int smbios_cpu_get_voltage(void)
++{
++	return VOLTAGE_5 | VOLTAGE_3_3; /* Unknown */
++}
+-- 
+2.46.1
+

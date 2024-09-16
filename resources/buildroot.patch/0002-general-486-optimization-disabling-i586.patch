@@ -1,0 +1,179 @@
+From 36b3de9bc81256970a9fc1d9360f75bbbf060679 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:57:06 +0200
+Subject: [PATCH 02/11] general 486 optimization, disabling i586+
+
+---
+ package/Makefile.in                    | 4 ++++
+ package/boost/boost.mk                 | 1 +
+ package/fio/fio.mk                     | 2 ++
+ package/gnutls/gnutls.mk               | 1 +
+ package/libopenssl/libopenssl.mk       | 2 ++
+ package/luajit/luajit.mk               | 4 ++--
+ package/mesa3d/mesa3d.mk               | 2 +-
+ package/openal/openal.mk               | 5 +++++
+ package/pixman/pixman.mk               | 4 ++++
+ package/prelink-cross/prelink-cross.mk | 3 +++
+ package/webp/webp.mk                   | 4 ++++
+ 11 files changed, 29 insertions(+), 3 deletions(-)
+
+diff --git a/package/Makefile.in b/package/Makefile.in
+index 9fbe960759..b68d62fc45 100644
+--- a/package/Makefile.in
++++ b/package/Makefile.in
+@@ -166,6 +166,10 @@ else ifeq ($(BR2_FORTIFY_SOURCE_3),y)
+ TARGET_HARDENED += -D_FORTIFY_SOURCE=3
+ endif
+ 
++#pc2005
++TARGET_OPTIMIZATION += $(call qstrip,$(BR2_TARGET_OPTIMIZATION))
++
++
+ TARGET_CPPFLAGS += -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
+ ifeq ($(BR2_TIME_BITS_64),y)
+ TARGET_CPPFLAGS += -D_TIME_BITS=64
+diff --git a/package/boost/boost.mk b/package/boost/boost.mk
+index 9b1baec5bf..041b6828ba 100644
+--- a/package/boost/boost.mk
++++ b/package/boost/boost.mk
+@@ -136,6 +136,7 @@ define BOOST_CONFIGURE_CMDS
+ 	cd $(@D) && ./bootstrap.sh $(BOOST_FLAGS)
+ 	echo "using gcc : `$(TARGET_CC) -dumpversion` : $(TARGET_CXX) : <cxxflags>\"$(BOOST_TARGET_CXXFLAGS)\" <linkflags>\"$(TARGET_LDFLAGS)\" ;" > $(@D)/user-config.jam
+ 	sed -i "s/: -O.* ;/: $(TARGET_OPTIMIZATION) ;/" $(@D)/tools/build/src/tools/gcc.jam
++	sed -i "s/toolset.flags gcc OPTIONS <architecture>x86\/<address-model>32\/<instruction-set> : -march=i686 ;/toolset.flags gcc OPTIONS <architecture>x86\/<address-model>32\/<instruction-set> : $(TARGET_OPTIMIZATION) ;/" $(@D)/tools/build/src/tools/gcc.jam
+ endef
+ 
+ define BOOST_BUILD_CMDS
+diff --git a/package/fio/fio.mk b/package/fio/fio.mk
+index f6e7b036bb..8ad5f01922 100644
+--- a/package/fio/fio.mk
++++ b/package/fio/fio.mk
+@@ -32,6 +32,8 @@ ifeq ($(BR2_PACKAGE_ZLIB),y)
+ FIO_DEPENDENCIES += zlib
+ endif
+ 
++TARGET_CFLAGS += $(subst $\",,$(BR2_TARGET_OPTIMIZATION))
++
+ define FIO_CONFIGURE_CMDS
+ 	(cd $(@D); $(TARGET_MAKE_ENV) ./configure $(FIO_OPTS))
+ endef
+diff --git a/package/gnutls/gnutls.mk b/package/gnutls/gnutls.mk
+index d9b9831fd6..0b13bf3e60 100644
+--- a/package/gnutls/gnutls.mk
++++ b/package/gnutls/gnutls.mk
+@@ -30,6 +30,7 @@ GNUTLS_CONF_OPTS = \
+ 	--without-librt-prefix \
+ 	--without-libz-prefix \
+ 	--without-tpm \
++	$(if $(BR2_x86_i486),--disable-padlock --disable-hardware-acceleration) \
+ 	$(if $(BR2_PACKAGE_GNUTLS_TOOLS),--enable-tools,--disable-tools) \
+ 	$(if $(BR2_PACKAGE_GNUTLS_ENABLE_SSL2),--enable,--disable)-ssl2-support \
+ 	$(if $(BR2_PACKAGE_GNUTLS_ENABLE_GOST),--enable,--disable)-gost
+diff --git a/package/libopenssl/libopenssl.mk b/package/libopenssl/libopenssl.mk
+index b8b6ec6bff..d53153d003 100644
+--- a/package/libopenssl/libopenssl.mk
++++ b/package/libopenssl/libopenssl.mk
+@@ -69,7 +69,9 @@ define LIBOPENSSL_CONFIGURE_CMDS
+ 		$(TARGET_CONFIGURE_ARGS) \
+ 		$(TARGET_CONFIGURE_OPTS) \
+ 		 CFLAGS="$(LIBOPENSSL_CFLAGS)" \
++		 PROCESSOR="$(if $(BR2_x86_i486),386)" \
+ 		./Configure \
++			$(if $(BR2_x86_i486),386 no-sse2 no-hw no-asm) \
+ 			$(LIBOPENSSL_TARGET_ARCH) \
+ 			--prefix=/usr \
+ 			--openssldir=/etc/ssl \
+diff --git a/package/luajit/luajit.mk b/package/luajit/luajit.mk
+index 06c8993391..5a64b5329e 100644
+--- a/package/luajit/luajit.mk
++++ b/package/luajit/luajit.mk
+@@ -51,13 +51,13 @@ define LUAJIT_BUILD_CMDS
+ 		TARGET_LD="$(TARGET_CC)" \
+ 		TARGET_AR="$(TARGET_AR) rcus" \
+ 		TARGET_STRIP=true \
+-		TARGET_CFLAGS="$(TARGET_CFLAGS)" \
++		TARGET_CFLAGS="$(TARGET_CFLAGS) -march=i486 -mtune=i486 -mfpmath=387" \
+ 		TARGET_LDFLAGS="$(TARGET_LDFLAGS)" \
+ 		HOST_CC="$(LUAJIT_HOST_CC)" \
+ 		HOST_CFLAGS="$(HOST_CFLAGS)" \
+ 		HOST_LDFLAGS="$(HOST_LDFLAGS)" \
+ 		BUILDMODE=dynamic \
+-		XCFLAGS="$(LUAJIT_XCFLAGS)" \
++		XCFLAGS="$(LUAJIT_XCFLAGS) -DLUAJIT_DISABLE_JIT" \
+ 		-C $(@D) amalg
+ endef
+ 
+diff --git a/package/mesa3d/mesa3d.mk b/package/mesa3d/mesa3d.mk
+index 4b360c8a8f..dffb288cac 100644
+--- a/package/mesa3d/mesa3d.mk
++++ b/package/mesa3d/mesa3d.mk
+@@ -249,7 +249,7 @@ else
+ MESA3D_CONF_OPTS += -Dzstd=disabled
+ endif
+ 
+-MESA3D_CFLAGS = $(TARGET_CFLAGS)
++MESA3D_CFLAGS = $(TARGET_CFLAGS) -march=i486 -mtune=i486
+ 
+ # m68k needs 32-bit offsets in switch tables to build
+ ifeq ($(BR2_m68k),y)
+diff --git a/package/openal/openal.mk b/package/openal/openal.mk
+index 3d624139c2..cf208141aa 100644
+--- a/package/openal/openal.mk
++++ b/package/openal/openal.mk
+@@ -13,6 +13,11 @@ OPENAL_INSTALL_STAGING = YES
+ # We don't need examples, tests and utilities, Distros don't ship them either
+ OPENAL_CONF_OPTS += -DALSOFT_UTILS=OFF -DALSOFT_EXAMPLES=OFF -DALSOFT_TESTS=OFF
+ 
++OPENAL_CONF_OPTS += -DCMAKE_C_FLAGS="-m80387 -mfpmath=387"
++OPENAL_CONF_OPTS += -DALSOFT_CPUEXT_SSE:BOOL=OFF -DALSOFT_CPUEXT_SSE2:BOOL=OFF -DALSOFT_CPUEXT_SSE3:BOOL=OFF -DALSOFT_CPUEXT_SSE4_1:BOOL=OFF -DALSOFT_ENABLE_SSE2_CODEGEN:BOOL=OFF 
++OPENAL_CONF_OPTS += -DALSOFT_REQUIRE_SSE:BOOL=OFF -DALSOFT_REQUIRE_SSE2:BOOL=OFF -DALSOFT_REQUIRE_SSE3:BOOL=OFF -DALSOFT_REQUIRE_SSE4_1:BOOL=OFF
++OPENAL_CONF_OPTS += -DHAVE_MFPMATH_SSE_2:INTERNAL=0 -DHAVE_MSSE2_SWITCH:INTERNAL=0
++
+ ifeq ($(BR2_TOOLCHAIN_GCC_AT_LEAST_4_8),y)
+ OPENAL_CONF_OPTS += -DEXTRA_LIBS=atomic
+ endif
+diff --git a/package/pixman/pixman.mk b/package/pixman/pixman.mk
+index 37eb974c46..a83091beb3 100644
+--- a/package/pixman/pixman.mk
++++ b/package/pixman/pixman.mk
+@@ -22,6 +22,10 @@ PIXMAN_AUTORECONF = YES
+ PIXMAN_CONF_OPTS = \
+ 	--disable-gtk \
+ 	--disable-loongson-mmi \
++	--disable-arm-iwmmxt2 \
++	--disable-mmx \
++	--disable-sse2 \
++	--disable-ssse3 \
+ 	--disable-arm-iwmmxt
+ 
+ # Affects only tests, and we don't build tests (see
+diff --git a/package/prelink-cross/prelink-cross.mk b/package/prelink-cross/prelink-cross.mk
+index 2312ee53e6..2089e8a613 100644
+--- a/package/prelink-cross/prelink-cross.mk
++++ b/package/prelink-cross/prelink-cross.mk
+@@ -13,4 +13,7 @@ PRELINK_CROSS_LICENSE_FILES = COPYING
+ PRELINK_CROSS_AUTORECONF = YES
+ HOST_PRELINK_CROSS_DEPENDENCIES = host-elfutils host-libiberty
+ 
++PRELINK_CROSS_CONF_ENV += CFLAGS="$(TARGET_CFLAGS) -Wno-incompatible-pointer-types"
++
++
+ $(eval $(host-autotools-package))
+diff --git a/package/webp/webp.mk b/package/webp/webp.mk
+index 33cb4bd507..b7ef07204d 100644
+--- a/package/webp/webp.mk
++++ b/package/webp/webp.mk
+@@ -38,6 +38,10 @@ else
+ WEBP_CONF_OPTS += --disable-libwebpmux
+ endif
+ 
++ifeq ($(BR2_x86_i486),y)
++WEBP_CONF_OPTS += --disable-sse4.1 --disable-sse2
++endif
++
+ ifeq ($(BR2_PACKAGE_GIFLIB),y)
+ WEBP_DEPENDENCIES += giflib
+ WEBP_CONF_OPTS += --enable-gif
+-- 
+2.46.1
+

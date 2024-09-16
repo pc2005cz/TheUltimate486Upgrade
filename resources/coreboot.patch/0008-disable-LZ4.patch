@@ -1,0 +1,83 @@
+From 299cca9c8562d916b04975166eecc08321307792 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 04:55:47 +0200
+Subject: [PATCH 08/26] disable LZ4
+
+LZMA makes smaller images - only thing which matters
+---
+ src/commonlib/Makefile.inc | 13 +++++++------
+ src/lib/cbfs.c             |  5 ++++-
+ src/lib/selfboot.c         |  3 +++
+ 3 files changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/src/commonlib/Makefile.inc b/src/commonlib/Makefile.inc
+index e90ed4f283..5ec4c7d02a 100644
+--- a/src/commonlib/Makefile.inc
++++ b/src/commonlib/Makefile.inc
+@@ -44,12 +44,13 @@ postcar-y += bsd/cbfs_mcache.c
+ ramstage-y += bsd/cbfs_mcache.c
+ smm-y += bsd/cbfs_mcache.c
+ 
+-decompressor-y += bsd/lz4_wrapper.c
+-bootblock-y += bsd/lz4_wrapper.c
+-verstage-y += bsd/lz4_wrapper.c
+-romstage-y += bsd/lz4_wrapper.c
+-ramstage-y += bsd/lz4_wrapper.c
+-postcar-y += bsd/lz4_wrapper.c
++# unused anyway, but faster build ;-)
++# decompressor-y += bsd/lz4_wrapper.c
++# bootblock-y += bsd/lz4_wrapper.c
++# verstage-y += bsd/lz4_wrapper.c
++# romstage-y += bsd/lz4_wrapper.c
++# ramstage-y += bsd/lz4_wrapper.c
++# postcar-y += bsd/lz4_wrapper.c
+ 
+ ramstage-y += sort.c
+ 
+diff --git a/src/lib/cbfs.c b/src/lib/cbfs.c
+index 4e25d27cfb..3989df7acd 100644
+--- a/src/lib/cbfs.c
++++ b/src/lib/cbfs.c
+@@ -219,6 +219,9 @@ static size_t cbfs_load_and_decompress(const struct region_device *rdev, void *b
+ 		return in_size;
+ 
+ 	case CBFS_COMPRESS_LZ4:
++		return 0;
++
++#if 0
+ 		if (!cbfs_lz4_enabled())
+ 			return 0;
+ 
+@@ -237,7 +240,7 @@ static size_t cbfs_load_and_decompress(const struct region_device *rdev, void *b
+ 		rdev_munmap(rdev, map);
+ 
+ 		return out_size;
+-
++#endif
+ 	case CBFS_COMPRESS_LZMA:
+ 		if (!cbfs_lzma_enabled())
+ 			return 0;
+diff --git a/src/lib/selfboot.c b/src/lib/selfboot.c
+index e6f8a16730..1424142cae 100644
+--- a/src/lib/selfboot.c
++++ b/src/lib/selfboot.c
+@@ -112,6 +112,8 @@ printk(BIOS_DEBUG, "tmp 0:%02hhx 1:%02hhx 2:%02hhx 3:%02hhx\n",
+ 		break;
+ 	}
+ 	case CBFS_COMPRESS_LZ4: {
++		return 0;
++#if 0
+ 		printk(BIOS_DEBUG, "using LZ4\n");
+ 		timestamp_add_now(TS_ULZ4F_START);
+ 		len = ulz4fn(src, len, dest, memsz);
+@@ -119,6 +121,7 @@ printk(BIOS_DEBUG, "tmp 0:%02hhx 1:%02hhx 2:%02hhx 3:%02hhx\n",
+ 		if (!len) /* Decompression Error. */
+ 			return 0;
+ 		break;
++#endif
+ 	}
+ 	case CBFS_COMPRESS_NONE: {
+ 		printk(BIOS_DEBUG, "it's not compressed!\n");
+-- 
+2.46.1
+

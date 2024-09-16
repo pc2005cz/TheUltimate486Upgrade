@@ -1,0 +1,25 @@
+From 31a1e3e1f5080a73c8b09f41a8bf40437fab1138 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:28:03 +0200
+Subject: [PATCH 12/27] Don't set AHCI to read NULL buffer
+
+---
+ src/hw/ahci.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/hw/ahci.c b/src/hw/ahci.c
+index d45b4307..fbe1cecc 100644
+--- a/src/hw/ahci.c
++++ b/src/hw/ahci.c
+@@ -117,7 +117,7 @@ static int ahci_command(struct ahci_port_s *port_gf, int iswrite, int isatapi,
+     cmd->prdt[0].baseu = 0;
+     cmd->prdt[0].flags = bsize-1;
+ 
+-    flags = ((1 << 16) | /* one prd entry */
++    flags = (((buffer?1:0) << 16) | /* one prd entry */
+              (iswrite ? (1 << 6) : 0) |
+              (isatapi ? (1 << 5) : 0) |
+              (5 << 0)); /* fis length (dwords) */
+-- 
+2.46.1
+

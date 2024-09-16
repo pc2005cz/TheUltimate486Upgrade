@@ -1,0 +1,34 @@
+From bfc307635f0e0e3979daec9a98b5045bfb278d08 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:22:27 +0200
+Subject: [PATCH 06/27] Increase bootmenu delay
+
+---
+ src/boot.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/boot.c b/src/boot.c
+index 1effd802..02274928 100644
+--- a/src/boot.c
++++ b/src/boot.c
+@@ -680,7 +680,7 @@ get_keystroke(int msec)
+  * Boot menu and BCV execution
+  ****************************************************************/
+ 
+-#define DEFAULT_BOOTMENU_WAIT 2500
++#define DEFAULT_BOOTMENU_WAIT 3000
+ 
+ static const char menuchars[] = {
+     '1', '2', '3', '4', '5', '6', '7', '8', '9',
+@@ -749,7 +749,7 @@ interactive_bootmenu(void)
+     // 1.5 seconds have passed.  Otherwise users (trained by years of
+     // repeatedly hitting keys to enter the BIOS) will end up hitting ESC
+     // multiple times and immediately booting the primary boot device.
+-    int esc_accepted_time = irqtimer_calc(menukey == 1 ? 1500 : 0);
++    int esc_accepted_time = irqtimer_calc(menukey == 1 ? 3000 : 0);
+     for (;;) {
+         int keystroke = get_keystroke_full(1000);
+         if (keystroke == 0x011b && !irqtimer_check(esc_accepted_time))
+-- 
+2.46.1
+

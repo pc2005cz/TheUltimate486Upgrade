@@ -1,0 +1,70 @@
+From 8dc8ac93f0333ca48da54d4b3db494de87fc41dc Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:36:36 +0200
+Subject: [PATCH 24/26] cbfsutils address range calculation fix
+
+---
+ util/cbfstool/cbfs.h     | 2 +-
+ util/cbfstool/cbfstool.c | 3 ++-
+ util/cbfstool/common.h   | 3 ++-
+ util/cbfstool/fit.c      | 3 ++-
+ 4 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/util/cbfstool/cbfs.h b/util/cbfstool/cbfs.h
+index eca7168787..fc72168988 100644
+--- a/util/cbfstool/cbfs.h
++++ b/util/cbfstool/cbfs.h
+@@ -9,7 +9,7 @@
+ /* To make CBFS more friendly to ROM, fill -1 (0xFF) instead of zero. */
+ #define CBFS_CONTENT_DEFAULT_VALUE	(-1)
+ 
+-#define CBFS_HEADPTR_ADDR_X86 0xFFFFFFFC
++#define CBFS_HEADPTR_ADDR_X86 0x000FFFFC	//pc2005
+ 
+ /* cbfstool is allowed to use this constant freely since it's not part of the
+    CBFS image, so make an alias for the name that's a little less aggressive. */
+diff --git a/util/cbfstool/cbfstool.c b/util/cbfstool/cbfstool.c
+index 8b6e835226..231adfb37e 100644
+--- a/util/cbfstool/cbfstool.c
++++ b/util/cbfstool/cbfstool.c
+@@ -391,7 +391,8 @@ printf("AA1\n");
+ 	return 0;
+ }
+ 
+-#define DEFAULT_DECODE_WINDOW_TOP	(4ULL * GiB)
++//#define DEFAULT_DECODE_WINDOW_TOP	(4ULL * GiB)
++#define DEFAULT_DECODE_WINDOW_TOP	(0x100000ULL)	//pc2005
+ #define DEFAULT_DECODE_WINDOW_MAX_SIZE	(16 * MiB)
+ 
+ static bool create_mmap_windows(void)
+diff --git a/util/cbfstool/common.h b/util/cbfstool/common.h
+index d39f8fbfbd..23e27d1a6d 100644
+--- a/util/cbfstool/common.h
++++ b/util/cbfstool/common.h
+@@ -19,7 +19,8 @@
+  * address space. This macros checks if the address is greater than 2GiB under the assumption
+  * that the low MMIO lives in the top half of the 4G address space of the host.
+  */
+-#define IS_HOST_SPACE_ADDRESS(addr)	((uint32_t)(addr) > 0x80000000)
++//#define IS_HOST_SPACE_ADDRESS(addr)	((uint32_t)(addr) > 0x80000000)
++#define IS_HOST_SPACE_ADDRESS(addr)	((uint32_t)(addr) >= 0xe0000)	//pc2005
+ 
+ #define unused __attribute__((unused))
+ 
+diff --git a/util/cbfstool/fit.c b/util/cbfstool/fit.c
+index 8ed24943b8..0ed56d8397 100644
+--- a/util/cbfstool/fit.c
++++ b/util/cbfstool/fit.c
+@@ -11,7 +11,8 @@
+ 
+ /* FIXME: This code assumes it is being executed on a little endian machine. */
+ 
+-#define FIT_POINTER_LOCATION 0xffffffc0
++//#define FIT_POINTER_LOCATION 0xffffffc0
++#define FIT_POINTER_LOCATION 0x000fffc0	//pc2005
+ #define FIT_TABLE_LOWEST_ADDRESS ((uint32_t)(-(16 << 20)))
+ #define FIT_ENTRY_CHECKSUM_VALID 0x80
+ #define FIT_HEADER_VERSION 0x0100
+-- 
+2.46.1
+

@@ -1,0 +1,78 @@
+#!/bin/bash
+. ./envir_buildroot_486.sh
+
+#TODO from filename
+MY_VERSION='6.3.9_486'
+
+MY_SRC_DIR="src_${MY_VERSION}"
+MY_BUILD_DIR="build_${MY_VERSION}"
+
+mkdir -p ${MY_BUILD_DIR}
+
+export INSTALL_PATH=`pwd`/${MY_BUILD_DIR}/_BUILD
+export INSTALL_MOD_PATH=`pwd`/${MY_BUILD_DIR}/_BUILD
+
+echo "${INSTALL_MOD_PATH} ${INSTALL_PATH}"
+
+mkdir -p ${INSTALL_PATH}
+
+export KBUILD_OUTPUT=`pwd`/${MY_BUILD_DIR}
+
+#make -j 4 -C `pwd`/${MY_SRC_DIR} all	|| exit
+#make -j 4 -C `pwd`/${MY_SRC_DIR} modules	|| exit
+#make -j 4 -C `pwd`/${MY_SRC_DIR} modules_install	|| exit
+
+##############################################################
+#make -C `pwd`/${MY_SRC_DIR} oldconfig	|| exit
+#make -C `pwd`/${MY_SRC_DIR} -j 12 nconfig	|| exit
+#make -C `pwd`/${MY_SRC_DIR} -j 12 menuconfig	|| exit
+#exit
+
+make -j 12 -C `pwd`/${MY_SRC_DIR} all || exit
+make -j 12 -C `pwd`/${MY_SRC_DIR} modules || exit
+make -j 12 -C `pwd`/${MY_SRC_DIR} modules_install || exit
+
+######3#make -j 12 -C `pwd`/${MY_SRC_DIR} install || exit
+
+#dont use, use our own make -j 12 -C `pwd`/${MY_SRC_DIR} install || exit
+
+#############################make -j 12 -C `pwd`/${MY_SRC_DIR} allnoconfig || exit
+
+#make -j 12 -C `pwd`/${MY_SRC_DIR} all || exit
+#make -j 12 -C `pwd`/${MY_SRC_DIR} modules_install install || exit
+#make -j 12 -C `pwd`/${MY_SRC_DIR} all modules || exit
+
+#make -j 12 -C `pwd`/${MY_SRC_DIR} all modules modules_install  || exit
+#make -j 4 -C `pwd`/${MY_SRC_DIR} all || exit
+#make -j 4 -C `pwd`/${MY_SRC_DIR} all  install  || exit
+
+#exit
+
+##############################################################
+
+#make -j 4 -C `pwd`/${MY_SRC_DIR}	|| exit
+#make -j 4 -C `pwd`/${MY_SRC_DIR} bzImage	|| exit
+
+##make -j 4 -C `pwd`/${MY_SRC_DIR} install	|| exit
+
+#if [ -n "${INSTALL_PATH}" ] && [ -f "${KBUILD_OUTPUT}/include/config/kernel.release" ]  ; then
+if [ -f "${KBUILD_OUTPUT}/include/config/kernel.release" ]  ; then
+	VER=`cat ${KBUILD_OUTPUT}/include/config/kernel.release`
+
+	mkdir -p ${INSTALL_PATH}/boot
+	if [ -f ${KBUILD_OUTPUT}/System.map ]; then
+		cp ${KBUILD_OUTPUT}/System.map ${INSTALL_PATH}/boot/System.map-${VER}
+		cp ${KBUILD_OUTPUT}/System.map ${INSTALL_PATH}/boot/System.map
+	else
+		echo "!!!!!! ${KBUILD_OUTPUT}/System.map does not exist !!!!!!"
+	fi
+	
+	if [ -f ${KBUILD_OUTPUT}/arch/x86/boot/bzImage ]; then
+		cp ${KBUILD_OUTPUT}/arch/x86/boot/bzImage ${INSTALL_PATH}/boot/vmlinuz-${VER}
+		cp ${KBUILD_OUTPUT}/arch/x86/boot/bzImage ${INSTALL_PATH}/boot/vmlinuz
+	else
+		echo "!!!!!! ${KBUILD_OUTPUT}/arch/x86/boot/bzImage does not exist !!!!!!"
+	fi
+	
+#	rsync -a -H -A -X ${INSTALL_PATH}/* 10.0.0.2:/
+fi

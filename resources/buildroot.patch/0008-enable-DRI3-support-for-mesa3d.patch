@@ -1,0 +1,24 @@
+From 6b9d8e648bb191758924ac1ead799803eba3963a Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:58:35 +0200
+Subject: [PATCH 08/11] enable DRI3 support for mesa3d
+
+---
+ package/mesa3d/Config.in | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/package/mesa3d/Config.in b/package/mesa3d/Config.in
+index 39a4f706e2..e852d0b808 100644
+--- a/package/mesa3d/Config.in
++++ b/package/mesa3d/Config.in
+@@ -182,6 +182,7 @@ config BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_R600
+ 	depends on !BR2_PACKAGE_MESA3D_LLVM || \
+ 		(BR2_PACKAGE_MESA3D_LLVM && (BR2_TOOLCHAIN_USES_UCLIBC || \
+ 			BR2_TOOLCHAIN_USES_GLIBC)) # elfutils
++	select BR2_PACKAGE_MESA3D_DRI3
+ 	select BR2_PACKAGE_MESA3D_GALLIUM_DRIVER
+ 	select BR2_PACKAGE_LIBDRM_RADEON
+ 	select BR2_PACKAGE_LLVM_AMDGPU if BR2_PACKAGE_MESA3D_LLVM
+-- 
+2.46.1
+

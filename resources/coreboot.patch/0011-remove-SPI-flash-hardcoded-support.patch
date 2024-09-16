@@ -1,0 +1,27 @@
+From 6441250f760f3e2e4f686981f0cf488bf97463d2 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:35:01 +0200
+Subject: [PATCH 11/26] remove SPI flash hardcoded support
+
+---
+ src/drivers/spi/Makefile.inc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/drivers/spi/Makefile.inc b/src/drivers/spi/Makefile.inc
+index 56ee44bd47..2f8de0e5cd 100644
+--- a/src/drivers/spi/Makefile.inc
++++ b/src/drivers/spi/Makefile.inc
+@@ -11,8 +11,8 @@ endif
+ # $1 stage name
+ # $2 optional _EARLY suffix for CONFIG_BOOT_DEVICE_SPI_FLASH_RW_NOMMAP(_EARLY)
+ define add_spi_stage
+-$(1)-y += spi-generic.c
+-$(1)-y += bitbang.c
++#$(1)-y += spi-generic.c
++#$(1)-y += bitbang.c
+ $(1)-$(CONFIG_COMMON_CBFS_SPI_WRAPPER) += cbfs_spi.c
+ $(1)-$(CONFIG_SPI_FLASH) += spi_flash.c
+ $(1)-$(CONFIG_SPI_SDCARD) += spi_sdcard.c
+-- 
+2.46.1
+

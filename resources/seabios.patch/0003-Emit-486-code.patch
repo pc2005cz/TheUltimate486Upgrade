@@ -1,0 +1,33 @@
+From 0f55a6b67f06022464caf7868fc54cd2e01c6bf2 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:19:18 +0200
+Subject: [PATCH 03/27] Emit 486 code
+
+---
+ Makefile | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index c108f87d..fe97d91b 100644
+--- a/Makefile
++++ b/Makefile
+@@ -61,7 +61,7 @@ CPPFLAGS = -P -MD -MT $@
+ COMMONCFLAGS := -I$(OUT) -Isrc -Os -MD -g \
+     -Wall -Wno-strict-aliasing -Wold-style-definition \
+     $(call cc-option,$(CC),-Wtype-limits,) \
+-    -m32 -march=i386 -mregparm=3 -mpreferred-stack-boundary=2 \
++    -m32 -march=i486 -mtune=i486 -mregparm=3 -mpreferred-stack-boundary=2 \
+     -minline-all-stringops -fomit-frame-pointer \
+     -freg-struct-return -ffreestanding -fno-delete-null-pointer-checks \
+     -ffunction-sections -fdata-sections -fno-common -fno-merge-constants
+@@ -71,6 +71,7 @@ COMMONCFLAGS += $(call cc-option,$(CC),-fno-stack-protector,)
+ COMMONCFLAGS += $(call cc-option,$(CC),-fno-stack-protector-all,)
+ COMMONCFLAGS += $(call cc-option,$(CC),-fstack-check=no,)
+ COMMONCFLAGS += $(call cc-option,$(CC),-Wno-address-of-packed-member,)
++COMMONCFLAGS += $(call cc-option,$(CC),-Wno-array-bounds,)
+ COMMONCFLAGS += $(call cc-option,$(CC),-fcf-protection=none,)
+ COMMA := ,
+ 
+-- 
+2.46.1
+

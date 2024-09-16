@@ -1,0 +1,186 @@
+From 51ad3366e4a777d5799c6b0b00a8ab0f6a5c07da Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 04:54:44 +0200
+Subject: [PATCH 07/26] lzma debug
+
+---
+ src/lib/lzma.c       | 13 +++++++++++--
+ src/lib/lzmadecode.c | 42 ++++++++++++++++++++++++++++++++++++++----
+ src/lib/selfboot.c   | 35 ++++++++++++++++++++++++++++++++++-
+ 3 files changed, 83 insertions(+), 7 deletions(-)
+
+diff --git a/src/lib/lzma.c b/src/lib/lzma.c
+index cf52002166..9d8df9f8b0 100644
+--- a/src/lib/lzma.c
++++ b/src/lib/lzma.c
+@@ -28,19 +28,28 @@ size_t ulzman(const void *src, size_t srcn, void *dst, size_t dstn)
+ 	CLzmaDecoderState state;
+ 	SizeT mallocneeds;
+ 	static unsigned char scratchpad[15980];
+-	const unsigned char *cp;
++	unsigned char cp[4];
+ 
+ 	if (srcn < data_offset) {
+ 		printk(BIOS_WARNING, "lzma: Input too small.\n");
+ 		return 0;
+ 	}
+ 
++	/*
++	https://elixir.bootlin.com/coreboot/4.19/source/src/lib/lzma.c#L38
++	https://elixir.bootlin.com/coreboot/4.19/source/src/lib/lzmadecode.c#L42
++	https://elixir.bootlin.com/coreboot/4.19/source/util/cbfstool/cbfs_image.c#L1485
++	*/
++
++
+ 	memcpy(properties, src, LZMA_PROPERTIES_SIZE);
+ 	/* The outSize in LZMA stream is a 64bit integer stored in little-endian
+ 	 * (ref: lzma.cc@LZMACompress: put_64). To prevent accessing by
+ 	 * unaligned memory address and to load in correct endianness, read each
+ 	 * byte and re-construct. */
+-	cp = src + LZMA_PROPERTIES_SIZE;
++
++	memcpy(cp, src + LZMA_PROPERTIES_SIZE, 4);
++	// cp = src + LZMA_PROPERTIES_SIZE;
+ 	outSize = cp[3] << 24 | cp[2] << 16 | cp[1] << 8 | cp[0];
+ 	if (outSize > dstn)
+ 		outSize = dstn;
+diff --git a/src/lib/lzmadecode.c b/src/lib/lzmadecode.c
+index cb868290aa..749c05f393 100644
+--- a/src/lib/lzmadecode.c
++++ b/src/lib/lzmadecode.c
+@@ -27,6 +27,9 @@
+ 
+ #include "lzmadecode.h"
+ #include <types.h>
++#include <console/console.h>
++
++#include <string.h>
+ 
+ #define kNumTopBits 24
+ #define kTopValue ((UInt32)1 << kNumTopBits)
+@@ -35,17 +38,39 @@
+ #define kBitModelTotal (1 << kNumBitModelTotalBits)
+ #define kNumMoveBits 5
+ 
++
+ /* Use 32-bit reads whenever possible to avoid bad flash performance. Fall back
+  * to byte reads for last 4 bytes since RC_TEST returns an error when BufferLim
+  * is *reached* (not surpassed!), meaning we can't allow that to happen while
+  * there are still bytes to decode from the algorithm's point of view. */
++
++static Byte _read8(const Byte * buf)
++{
++	Byte tmp8;
++
++	memcpy(&tmp8, buf, 1);
++
++	return tmp8;
++}
++
++static UInt32 _read32(const Byte * buf)
++{
++	UInt32 tmp32;
++
++	memcpy(&tmp32, buf, 4);
++
++	return tmp32;
++}
++
++
+ #define RC_READ_BYTE							\
+ 	(look_ahead_ptr < 4 ? look_ahead.raw[look_ahead_ptr++]		\
+ 	: ((((uintptr_t) Buffer & 3)					\
+-		|| ((SizeT) (BufferLim - Buffer) <= 4)) ? (*Buffer++)	\
+-	: ((look_ahead.dw = *(UInt32 *)Buffer), (Buffer += 4),		\
++		|| ((SizeT) (BufferLim - Buffer) <= 4)) ? (_read8(Buffer++))	\
++	: ((look_ahead.dw = _read32(Buffer)), (Buffer += 4),		\
+ 		(look_ahead_ptr = 1), look_ahead.raw[0])))
+ 
++
+ #define RC_INIT2 Code = 0; Range = 0xFFFFFFFF;		\
+ {							\
+ 	int i;						\
+@@ -292,8 +317,11 @@ int LzmaDecode(CLzmaDecoderState *vs,
+ 					IfBit0(prob) {
+ 						UpdateBit0(prob);
+ 
+-						if (nowPos == 0)
++						if (nowPos == 0) {
++							//printk(BIOS_INFO, "nowpos 0\n");
++
+ 							return LZMA_RESULT_DATA_ERROR;
++						}
+ 
+ 						state = state < kNumLitStates
+ 							? 9 : 11;
+@@ -417,8 +445,11 @@ int LzmaDecode(CLzmaDecoderState *vs,
+ 			}
+ 
+ 			len += kMatchMinLen;
+-			if (rep0 > nowPos)
++			if (rep0 > nowPos) {
++				//printk(BIOS_INFO, "rep0 %u, nowpos %u\n", rep0, nowPos);
++
+ 				return LZMA_RESULT_DATA_ERROR;
++			}
+ 
+ 
+ 			do {
+@@ -437,5 +468,8 @@ int LzmaDecode(CLzmaDecoderState *vs,
+ 
+ 	*inSizeProcessed = (SizeT)(Buffer - inStream);
+ 	*outSizeProcessed = nowPos;
++
++	// printk(BIOS_INFO, "LZMA OK\n");
++
+ 	return LZMA_RESULT_OK;
+ }
+diff --git a/src/lib/selfboot.c b/src/lib/selfboot.c
+index e21c493701..e6f8a16730 100644
+--- a/src/lib/selfboot.c
++++ b/src/lib/selfboot.c
+@@ -70,7 +70,40 @@ static int load_one_segment(uint8_t *dest,
+ 	/* Copy data from the initial buffer */
+ 	switch (compression) {
+ 	case CBFS_COMPRESS_LZMA: {
+-		printk(BIOS_DEBUG, "using LZMA\n");
++		printk(BIOS_DEBUG, "using LZMA s:%p d:%p\n", src, dest);
++
++#if 0
++{
++	dest[0] = 0x42;
++	dest[1] = 0xaa;
++	dest[2] = 0xbb;
++	dest[3] = 0x23;
++printk(BIOS_DEBUG, "dump 0:%02hhx 1:%02hhx 2:%02hhx 3:%02hhx\n",
++       dest[0], dest[1], dest[2], dest[3]
++);
++
++uint8_t *tmp = (uint8_t *) 0xf0000;
++	tmp[0] = 0x33;
++	tmp[1] = 0x22;
++	tmp[2] = 0x11;
++	tmp[3] = 0x69;
++
++printk(BIOS_DEBUG, "tmp 0:%02hhx 1:%02hhx 2:%02hhx 3:%02hhx\n",
++       tmp[0], tmp[1], tmp[2], tmp[3]
++);
++
++	tmp[0] = 0x33;
++	tmp[1] = 0x22;
++	tmp[2] = 0x11;
++	tmp[3] = 0x69;
++printk(BIOS_DEBUG, "tmp 0:%02hhx 1:%02hhx 2:%02hhx 3:%02hhx\n",
++       tmp[0], tmp[1], tmp[2], tmp[3]
++);
++
++}
++#endif
++
++
+ 		timestamp_add_now(TS_ULZMA_START);
+ 		len = ulzman(src, len, dest, memsz);
+ 		timestamp_add_now(TS_ULZMA_END);
+-- 
+2.46.1
+

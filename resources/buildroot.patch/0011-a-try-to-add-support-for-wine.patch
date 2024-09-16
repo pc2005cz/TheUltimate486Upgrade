@@ -1,0 +1,75 @@
+From 79850f52a69a3941a0403156e2499fd7102d02d5 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 06:02:24 +0200
+Subject: [PATCH 11/11] a try to add support for wine
+
+partial, wine is too big anyway
+Many Megabytes And Constantly Swapping :-D
+---
+ package/wine/0999-i486.patch | 20 ++++++++++++++++++++
+ package/wine/wine.mk         |  8 ++++++++
+ 2 files changed, 28 insertions(+)
+ create mode 100644 package/wine/0999-i486.patch
+
+diff --git a/package/wine/0999-i486.patch b/package/wine/0999-i486.patch
+new file mode 100644
+index 0000000000..b79f73b699
+--- /dev/null
++++ b/package/wine/0999-i486.patch
+@@ -0,0 +1,20 @@
++--- old/configure.ac	2023-01-24 16:06:25.000000000 +0100
+++++ new/configure.ac	2023-11-10 13:30:54.261654977 +0100
++@@ -888,7 +888,7 @@
++         if test -z "$llvm_target"
++         then
++             case $wine_arch in
++-            i386) llvm_target=i686-windows ;;
+++            i386) llvm_target=i386-windows ;;
++             arm)  llvm_target=armv7-windows ;;
++             *)    llvm_target=$wine_arch-windows ;;
++             esac
++@@ -1853,7 +1853,7 @@
++ #endif]])],
++           [wine_cv_64bit_compare_swap="none needed"],
++           [case $host_cpu in
++-            *i[[3456]]86*) wine_cv_64bit_compare_swap="-march=i586" ;;
+++            *i[[3456]]86*) wine_cv_64bit_compare_swap="-march=i486" ;;
++             *arm*)         wine_cv_64bit_compare_swap="-march=armv7-a" ;;
++             *)             wine_cv_64bit_compare_swap="unknown" ;;
++            esac
+diff --git a/package/wine/wine.mk b/package/wine/wine.mk
+index f47922dc70..7182cd5b68 100644
+--- a/package/wine/wine.mk
++++ b/package/wine/wine.mk
+@@ -14,11 +14,15 @@ WINE_SELINUX_MODULES = wine
+ WINE_DEPENDENCIES = host-bison host-flex host-wine
+ HOST_WINE_DEPENDENCIES = host-bison host-flex
+ 
++WINE_AUTORECONF = YES
++
+ # Wine needs its own directory structure and tools for cross compiling
+ WINE_CONF_OPTS = \
++	--enable-archs=i386 \
+ 	--with-wine-tools=../host-wine-$(WINE_VERSION) \
+ 	--disable-tests \
+ 	--disable-win64 \
++	--without-wine64 \
+ 	--without-capi \
+ 	--without-coreaudio \
+ 	--without-gettext \
+@@ -265,8 +269,12 @@ endef
+ 
+ # We are focused on the cross compiling tools, disable everything else
+ HOST_WINE_CONF_OPTS += \
++	--enable-archs=i386 \
+ 	--disable-tests \
+ 	--disable-win16 \
++	--disable-win64 \
++	--without-wine64 \
++	--without-wine-tools \
+ 	--without-alsa \
+ 	--without-capi \
+ 	--without-coreaudio \
+-- 
+2.46.1
+

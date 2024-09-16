@@ -1,0 +1,341 @@
+From ce9e6be3c3a1de401c27d0cbf5a509204deeb1ab Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:22:58 +0200
+Subject: [PATCH 21/26] Remove FMAP support
+
+FMAP adds support for multiple BIOS images in a single chip (chromebooks?)
+It also adds a large space overhead
+Remove it to gain like 200+ bytes of precious ROM space
+---
+ .../include/commonlib/bsd/cbfs_serialized.h   |  4 +-
+ src/include/memlayout.h                       |  2 +-
+ src/lib/Makefile.inc                          | 39 ++++++++++++-------
+ src/lib/cbfs.c                                | 17 ++++++--
+ src/lib/cbfs_master_header.c                  |  7 ++--
+ src/lib/coreboot_table.c                      |  2 +-
+ src/lib/master_header_pointer.c               |  8 ++--
+ tests/lib/Makefile.inc                        | 12 +++---
+ tests/lib/coreboot_table-test.c               |  2 +-
+ util/cbfstool/cbfstool.c                      | 20 +++++-----
+ 10 files changed, 66 insertions(+), 47 deletions(-)
+
+diff --git a/src/commonlib/bsd/include/commonlib/bsd/cbfs_serialized.h b/src/commonlib/bsd/include/commonlib/bsd/cbfs_serialized.h
+index 605412bbe1..3a904cbdaf 100644
+--- a/src/commonlib/bsd/include/commonlib/bsd/cbfs_serialized.h
++++ b/src/commonlib/bsd/include/commonlib/bsd/cbfs_serialized.h
+@@ -64,7 +64,9 @@ struct cbfs_header {
+ } __packed;
+ 
+ /* this used to be flexible, but wasn't ever set to something different. */
+-#define CBFS_ALIGNMENT 64
++#define CBFS_ALIGNMENT 32	//pc2005, original 64
++//CBFS must be aligned to at least 28 bytes
++
+ 
+ /* "Unknown" refers to CBFS headers version 1,
+  * before the architecture was defined (i.e., x86 only).
+diff --git a/src/include/memlayout.h b/src/include/memlayout.h
+index 0d84ec1481..ecb8f4351f 100644
+--- a/src/include/memlayout.h
++++ b/src/include/memlayout.h
+@@ -8,7 +8,7 @@
+ #include <arch/memlayout.h>
+ #include <vb2_constants.h>
+ 
+-#include "fmap_config.h"
++//#include "fmap_config.h"
+ 
+ /* Macros that the architecture can override. */
+ #ifndef ARCH_POINTER_ALIGN_SIZE
+diff --git a/src/lib/Makefile.inc b/src/lib/Makefile.inc
+index 3355669cd1..d91ba76fc5 100644
+--- a/src/lib/Makefile.inc
++++ b/src/lib/Makefile.inc
+@@ -64,14 +64,14 @@ bootblock-y += delay.c
+ bootblock-y += memchr.c
+ bootblock-y += memcmp.c
+ bootblock-y += boot_device.c
+-bootblock-y += fmap.c
++#bootblock-y += fmap.c
+ 
+ verstage-y += prog_loaders.c
+ verstage-y += prog_ops.c
+ verstage-y += delay.c
+ verstage-y += cbfs.c
+ verstage-y += halt.c
+-verstage-y += fmap.c
++#verstage-y += fmap.c
+ verstage-y += libgcc.c
+ verstage-y += memcmp.c
+ verstage-y += string.c
+@@ -92,7 +92,7 @@ $(foreach arch,$(ARCH_SUPPORTED),\
+ 	    $(eval rmodules_$(arch)-y += memcmp.c) \
+ 	    $(eval rmodules_$(arch)-y += rmodule.ld))
+ 
+-romstage-y += fmap.c
++#romstage-y += fmap.c
+ romstage-y += delay.c
+ romstage-y += cbfs.c
+ ifneq ($(CONFIG_COMPRESS_RAMSTAGE_LZMA)$(CONFIG_FSP_COMPRESS_FSP_M_LZMA),)
+@@ -117,7 +117,7 @@ romstage-$(CONFIG_COLLECT_TIMESTAMPS) += timestamp.c
+ romstage-$(CONFIG_CONSOLE_CBMEM) += cbmem_console.c
+ 
+ romstage-y += compute_ip_checksum.c
+-romstage-y += dimm_info_util.c
++#romstage-y += dimm_info_util.c
+ ifeq ($(CONFIG_COMPILER_GCC),y)
+ bootblock-$(CONFIG_ARCH_BOOTBLOCK_X86_32) += gcc.c
+ verstage-$(CONFIG_ARCH_VERSTAGE_X86_32) += gcc.c
+@@ -135,7 +135,7 @@ ramstage-y += hardwaremain.c
+ ramstage-y += selfboot.c
+ ramstage-y += coreboot_table.c
+ ramstage-y += bootmem.c
+-ramstage-y += fmap.c
++#ramstage-y += fmap.c
+ ramstage-y += memchr.c
+ ramstage-y += memcmp.c
+ ramstage-y += malloc.c
+@@ -222,7 +222,7 @@ ramstage-y += boot_device.c
+ 
+ smm-y += boot_device.c
+ smm-y += delay.c
+-smm-y += fmap.c
++#smm-y += fmap.c
+ smm-y += cbfs.c memcmp.c
+ smm-$(CONFIG_GENERIC_UDELAY) += timer.c
+ ifeq ($(CONFIG_DEBUG_SMI),y)
+@@ -243,12 +243,12 @@ $(call src-to-obj,smm,$(dir)/version.c) : $(obj)/build.h
+ $(call src-to-obj,verstage,$(dir)/version.c) : $(obj)/build.h
+ $(call src-to-obj,postcar,$(dir)/version.c) : $(obj)/build.h
+ 
+-$(call src-to-obj,bootblock,$(dir)/fmap.c) : $(obj)/fmap_config.h
+-$(call src-to-obj,romstage,$(dir)/fmap.c) : $(obj)/fmap_config.h
+-$(call src-to-obj,ramstage,$(dir)/fmap.c) : $(obj)/fmap_config.h
+-$(call src-to-obj,smm,$(dir)/fmap.c) : $(obj)/fmap_config.h
+-$(call src-to-obj,verstage,$(dir)/fmap.c) : $(obj)/fmap_config.h
+-$(call src-to-obj,postcar,$(dir)/fmap.c) : $(obj)/fmap_config.h
++#$(call src-to-obj,bootblock,$(dir)/fmap.c) : $(obj)/fmap_config.h
++#$(call src-to-obj,romstage,$(dir)/fmap.c) : $(obj)/fmap_config.h
++#$(call src-to-obj,ramstage,$(dir)/fmap.c) : $(obj)/fmap_config.h
++#$(call src-to-obj,smm,$(dir)/fmap.c) : $(obj)/fmap_config.h
++#$(call src-to-obj,verstage,$(dir)/fmap.c) : $(obj)/fmap_config.h
++#$(call src-to-obj,postcar,$(dir)/fmap.c) : $(obj)/fmap_config.h
+ 
+ bootblock-y += bootmode.c
+ romstage-y += bootmode.c
+@@ -292,7 +292,7 @@ postcar-y += bootmode.c
+ postcar-y += boot_device.c
+ postcar-y += cbfs.c
+ postcar-y += delay.c
+-postcar-y += fmap.c
++#postcar-y += fmap.c
+ postcar-y += gcc.c
+ postcar-y += halt.c
+ postcar-y += libgcc.c
+@@ -414,16 +414,25 @@ cbfs_master_header-file := cbfs_master_header.c:struct
+ cbfs_master_header-type := "cbfs header"
+ cbfs_master_header-position := 0
+ 
+-ifeq ($(CONFIG_ARCH_X86),y)
+-$(call src-to-obj,bootblock,$(dir)/master_header_pointer.c): $(obj)/fmap_config.h
++ifeq ($(CONFIG_ARCH_486),y)
++ANY86:=y
++else ifeq ($(CONFIG_ARCH_X86),y)
++ANY86:=y
++endif
++
++ifeq ($(ANY86),y)
++$(call src-to-obj,bootblock,$(dir)/master_header_pointer.c):
+ bootblock-y += master_header_pointer.c
+ endif
+ 
+ NEED_CBFS_POINTER=
+ 
+ ifneq ($(CONFIG_ARCH_X86),y)
++ifneq ($(CONFIG_ARCH_486),y)
+ NEED_CBFS_POINTER=y
+ endif
++endif
++
+ ifneq ($(CONFIG_BOOTBLOCK_IN_CBFS),y)
+ NEED_CBFS_POINTER=y
+ endif
+diff --git a/src/lib/cbfs.c b/src/lib/cbfs.c
+index 3989df7acd..a2eb5a4ce3 100644
+--- a/src/lib/cbfs.c
++++ b/src/lib/cbfs.c
+@@ -7,7 +7,7 @@
+ #include <commonlib/bsd/cbfs_private.h>
+ #include <commonlib/bsd/compression.h>
+ #include <console/console.h>
+-#include <fmap.h>
++// #include <fmap.h>
+ #include <lib.h>
+ #include <list.h>
+ #include <metadata_hash.h>
+@@ -670,11 +670,20 @@ const struct cbfs_boot_device *cbfs_get_boot_device(bool force_ro)
+ 	   time until an mcache is found. */
+ 	cbfs_boot_device_find_mcache(&ro, CBMEM_ID_CBFS_RO_MCACHE);
+ 
+-	if (region_device_sz(&ro.rdev))
++	if (region_device_sz(&ro.rdev)) {
++		// printk(BIOS_DEBUG, "L2 RO\n");
+ 		return &ro;
++	}
++
++///////////////////////// fmap removal
+ 
+-	if (fmap_locate_area_as_rdev("COREBOOT", &ro.rdev))
+-		die("Cannot locate primary CBFS");
++	struct region ar;
++	ar.offset = 0;
++	ar.size = CONFIG_CBFS_SIZE;
++
++	if (boot_device_ro_subregion(&ar, &ro.rdev)) {
++		die("Cannot locate CBFS");
++	}
+ 
+ 	if (ENV_INITIAL_STAGE) {
+ 		enum cb_err err = cbfs_init_boot_device(&ro, metadata_hash_get());
+diff --git a/src/lib/cbfs_master_header.c b/src/lib/cbfs_master_header.c
+index d358d1a37d..9352d04b8c 100644
+--- a/src/lib/cbfs_master_header.c
++++ b/src/lib/cbfs_master_header.c
+@@ -1,7 +1,7 @@
+ /* SPDX-License-Identifier: GPL-2.0-only */
+ 
+ #include <endian.h>
+-#include <fmap_config.h>
++//#include <fmap_config.h>
+ #include <commonlib/bsd/cbfs_serialized.h>
+ 
+ struct cbfs_header header = {
+@@ -14,8 +14,7 @@ struct cbfs_header header = {
+ 	 * representing the CBFS region's size is added to the offset of
+ 	 * the region within a larger image.
+ 	 */
+-	.romsize = cpu_to_be32(FMAP_SECTION_COREBOOT_START + FMAP_SECTION_COREBOOT_SIZE
+-			       - FMAP_SECTION_FLASH_START),
++	.romsize = cpu_to_be32(CONFIG_CBFS_SIZE),
+ 	/*
+ 	 * The 4 bytes are left out for two reasons:
+ 	 * 1. the cbfs master header pointer resides there
+@@ -25,6 +24,6 @@ struct cbfs_header header = {
+ 	 */
+ 	.bootblocksize = cpu_to_be32(4),
+ 	.align = cpu_to_be32(CBFS_ALIGNMENT),
+-	.offset = cpu_to_be32(FMAP_SECTION_COREBOOT_START - FMAP_SECTION_FLASH_START),
++	.offset = cpu_to_be32(0),
+ 	.architecture = cpu_to_be32(CBFS_ARCHITECTURE_UNKNOWN),
+ };
+diff --git a/src/lib/coreboot_table.c b/src/lib/coreboot_table.c
+index 0707fd3eca..6a73219479 100644
+--- a/src/lib/coreboot_table.c
++++ b/src/lib/coreboot_table.c
+@@ -232,7 +232,7 @@ static void lb_boot_media_params(struct lb_header *header)
+ 	bmp->cbfs_size = region_device_sz(&cbd->rdev);
+ 	bmp->boot_media_size = region_device_sz(boot_dev);
+ 
+-	bmp->fmap_offset = get_fmap_flash_offset();
++//	bmp->fmap_offset = get_fmap_flash_offset();
+ }
+ 
+ static void lb_mmc_info(struct lb_header *header)
+diff --git a/src/lib/master_header_pointer.c b/src/lib/master_header_pointer.c
+index b2c3fe64ef..dff1eec0f3 100644
+--- a/src/lib/master_header_pointer.c
++++ b/src/lib/master_header_pointer.c
+@@ -2,17 +2,17 @@
+ 
+ #include <commonlib/bsd/cbfs_serialized.h>
+ #include <endian.h>
+-#include <fmap_config.h>
++//#include <fmap_config.h>
+ #include <stdint.h>
+ 
+ #if CONFIG(BOOTBLOCK_IN_CBFS)
+ __attribute__((used, __section__(".header_pointer")))
+ #endif
+ 
+-#if FMAP_SECTION_COREBOOT_START < (0xffffffff - CONFIG_ROM_SIZE + 1)
+-#define COREBOOT_CBFS_START (0xffffffff - CONFIG_ROM_SIZE + 1 + FMAP_SECTION_COREBOOT_START)
++#if 0 < (0xffffffff - CONFIG_ROM_SIZE + 1)
++#define COREBOOT_CBFS_START (0xffffffff - CONFIG_ROM_SIZE + 1 + 0)
+ #else
+-#define COREBOOT_CBFS_START FMAP_SECTION_COREBOOT_START
++#define COREBOOT_CBFS_START 0
+ #endif
+ 
+ uint32_t header_pointer =
+diff --git a/tests/lib/Makefile.inc b/tests/lib/Makefile.inc
+index de2e864c6d..00789c512c 100644
+--- a/tests/lib/Makefile.inc
++++ b/tests/lib/Makefile.inc
+@@ -77,12 +77,12 @@ cbmem_console-ramstage-test-srcs += tests/stubs/console.c
+ list-test-srcs += tests/lib/list-test.c
+ list-test-srcs += src/lib/list.c
+ 
+-fmap-test-srcs += tests/lib/fmap-test.c
+-fmap-test-srcs += src/lib/fmap.c
+-fmap-test-srcs += tests/stubs/console.c
+-fmap-test-srcs += src/lib/boot_device.c
+-fmap-test-srcs += src/commonlib/region.c
+-fmap-test-cflags += -I tests/include/tests/lib/fmap
++#fmap-test-srcs += tests/lib/fmap-test.c
++#fmap-test-srcs += src/lib/fmap.c
++#fmap-test-srcs += tests/stubs/console.c
++#fmap-test-srcs += src/lib/boot_device.c
++#fmap-test-srcs += src/commonlib/region.c
++#fmap-test-cflags += -I tests/include/tests/lib/fmap
+ 
+ imd_cbmem-ramstage-test-stage := ramstage
+ imd_cbmem-ramstage-test-srcs += tests/lib/imd_cbmem-test.c
+diff --git a/tests/lib/coreboot_table-test.c b/tests/lib/coreboot_table-test.c
+index 9547ee07a6..d24487f99a 100644
+--- a/tests/lib/coreboot_table-test.c
++++ b/tests/lib/coreboot_table-test.c
+@@ -421,7 +421,7 @@ static void test_write_tables(void **state)
+ 			assert_int_equal(region_device_offset(&cbd->rdev), bmp->cbfs_offset);
+ 			assert_int_equal(region_device_sz(&cbd->rdev), bmp->cbfs_size);
+ 			assert_int_equal(region_device_sz(boot_dev), bmp->boot_media_size);
+-			assert_int_equal(get_fmap_flash_offset(), bmp->fmap_offset);
++//			assert_int_equal(get_fmap_flash_offset(), bmp->fmap_offset);
+ 
+ 			break;
+ 		case LB_TAG_CBMEM_ENTRY:
+diff --git a/util/cbfstool/cbfstool.c b/util/cbfstool/cbfstool.c
+index a883ddafab..d4a6aff426 100644
+--- a/util/cbfstool/cbfstool.c
++++ b/util/cbfstool/cbfstool.c
+@@ -1387,18 +1387,18 @@ static int cbfs_create(void)
+ 	memset(&image, 0, sizeof(image));
+ 	buffer_clone(&image.buffer, param.image_region);
+ 
+-	if (param.fmap) {
+-		if (param.arch != CBFS_ARCHITECTURE_UNKNOWN || param.size ||
+-						param.baseaddress_assigned ||
+-						param.headeroffset_assigned ||
+-						param.cbfsoffset_assigned ||
+-							param.bootblock) {
+-			ERROR("Since -M was provided, -m, -s, -b, -o, -H, and -B should be omitted\n");
+-			return 1;
+-		}
++	// if (param.fmap) {
++		// if (param.arch != CBFS_ARCHITECTURE_UNKNOWN || param.size ||
++		// 				param.baseaddress_assigned ||
++		// 				param.headeroffset_assigned ||
++		// 				param.cbfsoffset_assigned ||
++		// 					param.bootblock) {
++		// 	ERROR("Since -M was provided, -m, -s, -b, -o, -H, and -B should be omitted\n");
++		// 	return 1;
++		// }
+ 
+ 		return cbfs_image_create(&image, image.buffer.size);
+-	}
++	// }
+ 
+ 	if (param.arch == CBFS_ARCHITECTURE_UNKNOWN) {
+ 		ERROR("You need to specify -m/--machine arch.\n");
+-- 
+2.46.1
+

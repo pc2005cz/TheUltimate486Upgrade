@@ -1,0 +1,101 @@
+From d696a4ae0e92d41d63ef90c5cd56778340d401c5 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 21:52:38 +0200
+Subject: [PATCH 01/26] update and remove submodules
+
+---
+ .gitmodules                                  | 3 ---
+ 3rdparty/arm-trusted-firmware                | 2 +-
+ 3rdparty/chromeec                            | 1 -
+ 3rdparty/libgfxinit                          | 2 +-
+ 3rdparty/libhwbase                           | 2 +-
+ 3rdparty/open-power-signing-utils            | 1 +
+ 3rdparty/vboot                               | 2 +-
+ src/vendorcode/amd/opensil/genoa_poc/opensil | 1 +
+ util/goswid                                  | 2 +-
+ util/nvidia/cbootimage                       | 2 +-
+ 10 files changed, 8 insertions(+), 10 deletions(-)
+ delete mode 160000 3rdparty/chromeec
+ create mode 160000 3rdparty/open-power-signing-utils
+ create mode 160000 src/vendorcode/amd/opensil/genoa_poc/opensil
+
+diff --git a/.gitmodules b/.gitmodules
+index 6f62952f43..549c920416 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -13,9 +13,6 @@
+ [submodule "arm-trusted-firmware"]
+ 	path = 3rdparty/arm-trusted-firmware
+ 	url = ../arm-trusted-firmware.git
+-[submodule "3rdparty/chromeec"]
+-	path = 3rdparty/chromeec
+-	url = ../chrome-ec.git
+ [submodule "libhwbase"]
+ 	path = 3rdparty/libhwbase
+ 	url = ../libhwbase.git
+diff --git a/3rdparty/arm-trusted-firmware b/3rdparty/arm-trusted-firmware
+index 9881bb93a3..c5b8de86c8 160000
+--- a/3rdparty/arm-trusted-firmware
++++ b/3rdparty/arm-trusted-firmware
+@@ -1 +1 @@
+-Subproject commit 9881bb93a3bc0a3ea37e9f093e09ab4b360a9e48
++Subproject commit c5b8de86c8838d08d5d8c9d67c7a432817ee62b8
+diff --git a/3rdparty/chromeec b/3rdparty/chromeec
+deleted file mode 160000
+index e486b388a7..0000000000
+--- a/3rdparty/chromeec
++++ /dev/null
+@@ -1 +0,0 @@
+-Subproject commit e486b388a73f1e19f3142774d0b3ee166e8f41ff
+diff --git a/3rdparty/libgfxinit b/3rdparty/libgfxinit
+index 066e52eeaa..17cfc92f40 160000
+--- a/3rdparty/libgfxinit
++++ b/3rdparty/libgfxinit
+@@ -1 +1 @@
+-Subproject commit 066e52eeaa329d782ccee96265a6a351fc395bf1
++Subproject commit 17cfc92f402493979783585b6581efbd98c0cf07
+diff --git a/3rdparty/libhwbase b/3rdparty/libhwbase
+index 8be5a82b85..584629b9f4 160000
+--- a/3rdparty/libhwbase
++++ b/3rdparty/libhwbase
+@@ -1 +1 @@
+-Subproject commit 8be5a82b85ceb3ee8a1c4fbf36c75a4bfbda8900
++Subproject commit 584629b9f4771b7618951cec57df2ca3af9c6981
+diff --git a/3rdparty/open-power-signing-utils b/3rdparty/open-power-signing-utils
+new file mode 160000
+index 0000000000..591c8f5348
+--- /dev/null
++++ b/3rdparty/open-power-signing-utils
+@@ -0,0 +1 @@
++Subproject commit 591c8f53482243626901e1cc8a4ae321f314040d
+diff --git a/3rdparty/vboot b/3rdparty/vboot
+index 5b8596cefd..f1f70f46dc 160000
+--- a/3rdparty/vboot
++++ b/3rdparty/vboot
+@@ -1 +1 @@
+-Subproject commit 5b8596cefd1a61252501943f2534323708338732
++Subproject commit f1f70f46dc5482bb7c654e53ed58d4001e386df2
+diff --git a/src/vendorcode/amd/opensil/genoa_poc/opensil b/src/vendorcode/amd/opensil/genoa_poc/opensil
+new file mode 160000
+index 0000000000..0411c75e17
+--- /dev/null
++++ b/src/vendorcode/amd/opensil/genoa_poc/opensil
+@@ -0,0 +1 @@
++Subproject commit 0411c75e1787a0d2dc18d168def7352cef9e8c12
+diff --git a/util/goswid b/util/goswid
+index bdd55e4202..567a1c99b0 160000
+--- a/util/goswid
++++ b/util/goswid
+@@ -1 +1 @@
+-Subproject commit bdd55e42029b8ef734abfd56efe789d41996bfd4
++Subproject commit 567a1c99b0c05136b2685ff14d893f85ba16e988
+diff --git a/util/nvidia/cbootimage b/util/nvidia/cbootimage
+index 65a6d94dd5..80c499ebbe 160000
+--- a/util/nvidia/cbootimage
++++ b/util/nvidia/cbootimage
+@@ -1 +1 @@
+-Subproject commit 65a6d94dd5f442578551e0a81ecbe5235e673fd4
++Subproject commit 80c499ebbe8a64aa2ee4222e6a8f342f465f6680
+-- 
+2.46.1
+

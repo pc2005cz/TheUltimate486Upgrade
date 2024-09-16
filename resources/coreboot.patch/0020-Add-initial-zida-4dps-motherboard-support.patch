@@ -1,0 +1,477 @@
+From 1681fb4dfbd638f707c03bfbd599bf3f4d00ade3 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:07:25 +0200
+Subject: [PATCH 20/26] Add initial zida 4dps motherboard support
+
+just initial files
+---
+ src/mainboard/zida/4dps/Kconfig            | 27 ++++++
+ src/mainboard/zida/4dps/Kconfig.name       |  4 +
+ src/mainboard/zida/4dps/Makefile.inc       |  4 +
+ src/mainboard/zida/4dps/board_info.txt     |  8 ++
+ src/mainboard/zida/4dps/bootblock.c        | 14 ++++
+ src/mainboard/zida/4dps/config_seabios     | 91 ++++++++++++++++++++
+ src/mainboard/zida/4dps/config_seabios_old | 98 ++++++++++++++++++++++
+ src/mainboard/zida/4dps/devicetree.cb      | 10 +++
+ src/mainboard/zida/4dps/irq_tables.c       | 63 ++++++++++++++
+ src/mainboard/zida/4dps/mainboard.c        | 20 +++++
+ src/mainboard/zida/4dps/romstage.c         |  5 ++
+ src/mainboard/zida/Kconfig                 | 15 ++++
+ src/mainboard/zida/Kconfig.name            |  2 +
+ 13 files changed, 361 insertions(+)
+ create mode 100644 src/mainboard/zida/4dps/Kconfig
+ create mode 100644 src/mainboard/zida/4dps/Kconfig.name
+ create mode 100644 src/mainboard/zida/4dps/Makefile.inc
+ create mode 100644 src/mainboard/zida/4dps/board_info.txt
+ create mode 100644 src/mainboard/zida/4dps/bootblock.c
+ create mode 100644 src/mainboard/zida/4dps/config_seabios
+ create mode 100644 src/mainboard/zida/4dps/config_seabios_old
+ create mode 100644 src/mainboard/zida/4dps/devicetree.cb
+ create mode 100644 src/mainboard/zida/4dps/irq_tables.c
+ create mode 100644 src/mainboard/zida/4dps/mainboard.c
+ create mode 100644 src/mainboard/zida/4dps/romstage.c
+ create mode 100644 src/mainboard/zida/Kconfig
+ create mode 100644 src/mainboard/zida/Kconfig.name
+
+diff --git a/src/mainboard/zida/4dps/Kconfig b/src/mainboard/zida/4dps/Kconfig
+new file mode 100644
+index 0000000000..e807cb9760
+--- /dev/null
++++ b/src/mainboard/zida/4dps/Kconfig
+@@ -0,0 +1,27 @@
++if BOARD_ZIDA_4DPS
++
++config BOARD_SPECIFIC_OPTIONS
++	def_bool y
++#TODO maybe into cpu/486
++	select CPU_486
++	select BOARD_ROMSIZE_KB_128
++	select MISSING_BOARD_RESET
++	select NORTHBRIDGE_SIS_85C496
++	select SOUTHBRIDGE_SIS_85C497
++	select SUPERIO_WINBOND_W83787IF
++#	 select HAVE_OPTION_TABLE
++#	 select HAVE_CMOS_DEFAULT
++	select HAVE_PIRQ_TABLE
++	select NO_MONOTONIC_TIMER
++
++config MAINBOARD_DIR
++	default "zida/4dps"
++
++config MAINBOARD_PART_NUMBER
++	default "4DPS"
++
++config IRQ_SLOT_COUNT
++	int
++	default 3
++
++endif #BOARD_ZIDA_4DPS
+diff --git a/src/mainboard/zida/4dps/Kconfig.name b/src/mainboard/zida/4dps/Kconfig.name
+new file mode 100644
+index 0000000000..8531e0b68a
+--- /dev/null
++++ b/src/mainboard/zida/4dps/Kconfig.name
+@@ -0,0 +1,4 @@
++config BOARD_ZIDA_4DPS
++	bool "Zida 4DPS tomatoboard"
++	help
++	  experimental, also: Taken PCI400, J-Bond PCI400
+diff --git a/src/mainboard/zida/4dps/Makefile.inc b/src/mainboard/zida/4dps/Makefile.inc
+new file mode 100644
+index 0000000000..fce0f903c8
+--- /dev/null
++++ b/src/mainboard/zida/4dps/Makefile.inc
+@@ -0,0 +1,4 @@
++bootblock-y += bootblock.c
++romstage-y += romstage.c
++
++ramstage-$(CONFIG_GENERATE_PIRQ_TABLE) += irq_tables.c
+diff --git a/src/mainboard/zida/4dps/board_info.txt b/src/mainboard/zida/4dps/board_info.txt
+new file mode 100644
+index 0000000000..c830e1e7f7
+--- /dev/null
++++ b/src/mainboard/zida/4dps/board_info.txt
+@@ -0,0 +1,8 @@
++Board name: Zida 4DPS
++Category: retro
++Board URL: https://theretroweb.com/motherboards/s/zida-4dps
++ROM package: DIP-32
++ROM protocol: Parallel
++ROM socketed: y
++Flashrom support: y
++Release year: 1995
+diff --git a/src/mainboard/zida/4dps/bootblock.c b/src/mainboard/zida/4dps/bootblock.c
+new file mode 100644
+index 0000000000..e049ee933b
+--- /dev/null
++++ b/src/mainboard/zida/4dps/bootblock.c
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include <bootblock_common.h>
++#include <superio/winbond/w83787if/winbond.h>
++// #include <superio/winbond/w83977tf/w83977tf.h>
++
++
++
++void bootblock_mainboard_early_init(void)
++{
++	//enable superio serial
++
++	winbond_enable_serial(0, CONFIG_TTYS0_BASE);
++}
+diff --git a/src/mainboard/zida/4dps/config_seabios b/src/mainboard/zida/4dps/config_seabios
+new file mode 100644
+index 0000000000..74a3e54f4d
+--- /dev/null
++++ b/src/mainboard/zida/4dps/config_seabios
+@@ -0,0 +1,91 @@
++#
++# Automatically generated file; DO NOT EDIT.
++# SeaBIOS Configuration
++#
++
++#
++# General Features
++#
++CONFIG_COREBOOT=y
++# CONFIG_QEMU is not set
++# CONFIG_CSM is not set
++# CONFIG_QEMU_HARDWARE is not set
++CONFIG_THREADS=y
++CONFIG_RELOCATE_INIT=y
++CONFIG_BOOTMENU=y
++# CONFIG_BOOTSPLASH is not set
++CONFIG_BOOTORDER=y
++CONFIG_HOST_BIOS_GEOMETRY=y
++# CONFIG_COREBOOT_FLASH is not set
++# CONFIG_MULTIBOOT is not set
++CONFIG_ENTRY_EXTRASTACK=y
++# CONFIG_MALLOC_UPPERMEMORY is not set
++CONFIG_ROM_SIZE=0
++
++#
++# Hardware support
++#
++CONFIG_ATA=y
++CONFIG_ATA_DMA=y
++CONFIG_ATA_PIO32=y
++CONFIG_AHCI=y
++# CONFIG_SDCARD is not set
++# CONFIG_MEGASAS is not set
++CONFIG_FLOPPY=y
++# CONFIG_FLASH_FLOPPY is not set
++# CONFIG_NVME is not set
++CONFIG_PS2PORT=y
++CONFIG_USB=y
++CONFIG_USB_UHCI=y
++CONFIG_USB_OHCI=y
++# CONFIG_USB_EHCI is not set
++# CONFIG_USB_XHCI is not set
++CONFIG_USB_MSC=y
++CONFIG_USB_UAS=y
++CONFIG_USB_HUB=y
++CONFIG_USB_KEYBOARD=y
++CONFIG_USB_MOUSE=y
++CONFIG_SERIAL=y
++CONFIG_SERCON=y
++CONFIG_LPT=y
++CONFIG_RTC_TIMER=y
++CONFIG_HARDWARE_IRQ=y
++# CONFIG_PMTIMER is not set
++# CONFIG_TSC_TIMER is not set
++
++#
++# BIOS interfaces
++#
++CONFIG_DRIVES=y
++CONFIG_CDROM_BOOT=y
++CONFIG_CDROM_EMU=y
++CONFIG_PCIBIOS=y
++CONFIG_APMBIOS=y
++CONFIG_PNPBIOS=y
++CONFIG_OPTIONROMS=y
++CONFIG_PMM=y
++CONFIG_BOOT=y
++CONFIG_KEYBOARD=y
++CONFIG_KBD_CALL_INT15_4F=y
++CONFIG_MOUSE=y
++# CONFIG_S3_RESUME is not set
++# CONFIG_VGAHOOKS is not set
++# CONFIG_DISABLE_A20 is not set
++
++#
++# VGA ROM
++#
++CONFIG_NO_VGABIOS=y
++# CONFIG_VGA_GEODEGX2 is not set
++# CONFIG_VGA_GEODELX is not set
++# CONFIG_VGA_COREBOOT is not set
++# CONFIG_BUILD_VGABIOS is not set
++CONFIG_VGA_EXTRA_STACK_SIZE=512
++
++#
++# Debugging
++#
++CONFIG_DEBUG_LEVEL=1
++CONFIG_DEBUG_SERIAL=y
++CONFIG_DEBUG_SERIAL_PORT=0x3f8
++# CONFIG_DEBUG_COREBOOT is not set
+diff --git a/src/mainboard/zida/4dps/config_seabios_old b/src/mainboard/zida/4dps/config_seabios_old
+new file mode 100644
+index 0000000000..599db0b147
+--- /dev/null
++++ b/src/mainboard/zida/4dps/config_seabios_old
+@@ -0,0 +1,98 @@
++#
++# Automatically generated file; DO NOT EDIT.
++# SeaBIOS Configuration
++#
++
++#
++# General Features
++#
++CONFIG_COREBOOT=y
++# CONFIG_QEMU is not set
++# CONFIG_CSM is not set
++# CONFIG_QEMU_HARDWARE is not set
++CONFIG_THREADS=y
++CONFIG_RELOCATE_INIT=y
++CONFIG_BOOTMENU=y
++# CONFIG_BOOTSPLASH is not set
++CONFIG_BOOTORDER=y
++CONFIG_HOST_BIOS_GEOMETRY=y
++CONFIG_COREBOOT_FLASH=y
++CONFIG_LZMA=y
++CONFIG_CBFS_LOCATION=0
++# CONFIG_MULTIBOOT is not set
++CONFIG_ENTRY_EXTRASTACK=y
++CONFIG_MALLOC_UPPERMEMORY=y
++CONFIG_ROM_SIZE=0
++
++#
++# Hardware support
++#
++CONFIG_ATA=y
++CONFIG_ATA_DMA=y
++CONFIG_ATA_PIO32=y
++CONFIG_AHCI=y
++# CONFIG_SDCARD is not set
++# CONFIG_MEGASAS is not set
++CONFIG_FLOPPY=y
++# CONFIG_FLASH_FLOPPY is not set
++# CONFIG_NVME is not set
++CONFIG_PS2PORT=y
++CONFIG_USB=y
++CONFIG_USB_UHCI=y
++CONFIG_USB_OHCI=y
++#######CONFIG_USB_EHCI=y
++# CONFIG_USB_EHCI is not set
++#### CONFIG_USB_XHCI=y
++# CONFIG_USB_XHCI is not set
++CONFIG_USB_MSC=y
++#### CONFIG_USB_UAS=y
++# CONFIG_USB_UAS is not set
++CONFIG_USB_HUB=y
++CONFIG_USB_KEYBOARD=y
++CONFIG_USB_MOUSE=y
++CONFIG_SERIAL=y
++CONFIG_SERCON=y
++CONFIG_LPT=y
++CONFIG_RTC_TIMER=y
++CONFIG_HARDWARE_IRQ=y
++# CONFIG_PMTIMER is not set
++# CONFIG_TSC_TIMER is not set
++
++#
++# BIOS interfaces
++#
++CONFIG_DRIVES=y
++CONFIG_CDROM_BOOT=y
++CONFIG_CDROM_EMU=y
++CONFIG_PCIBIOS=y
++CONFIG_APMBIOS=y
++CONFIG_PNPBIOS=y
++CONFIG_OPTIONROMS=y
++CONFIG_PMM=y
++CONFIG_BOOT=y
++CONFIG_KEYBOARD=y
++CONFIG_KBD_CALL_INT15_4F=y
++CONFIG_MOUSE=y
++####3# CONFIG_S3_RESUME=y
++# CONFIG_S3_RESUME is not set
++# CONFIG_VGAHOOKS is not set
++# CONFIG_DISABLE_A20 is not set
++# CONFIG_TCGBIOS is not set
++
++#
++# VGA ROM
++#
++CONFIG_NO_VGABIOS=y
++# CONFIG_VGA_GEODEGX2 is not set
++# CONFIG_VGA_GEODELX is not set
++# CONFIG_VGA_COREBOOT is not set
++# CONFIG_BUILD_VGABIOS is not set
++CONFIG_VGA_EXTRA_STACK_SIZE=512
++
++#
++# Debugging
++#
++CONFIG_DEBUG_LEVEL=1
++CONFIG_DEBUG_SERIAL=y
++CONFIG_DEBUG_SERIAL_PORT=0x3f8
++# CONFIG_DEBUG_COREBOOT is not set
+diff --git a/src/mainboard/zida/4dps/devicetree.cb b/src/mainboard/zida/4dps/devicetree.cb
+new file mode 100644
+index 0000000000..b13fa3a0d0
+--- /dev/null
++++ b/src/mainboard/zida/4dps/devicetree.cb
+@@ -0,0 +1,10 @@
++chip northbridge/sis/85c496
++
++	device domain 0 on
++
++#	chip southbridge/sis/85c497
++
++
++	end
++
++end
+diff --git a/src/mainboard/zida/4dps/irq_tables.c b/src/mainboard/zida/4dps/irq_tables.c
+new file mode 100644
+index 0000000000..591b9bf763
+--- /dev/null
++++ b/src/mainboard/zida/4dps/irq_tables.c
+@@ -0,0 +1,63 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include <arch/pirq_routing.h>
++#include <device/pci_ids.h>
++
++
++//TODO from working system?
++
++static const struct irq_routing_table sis_irq_routing_table = {
++	PIRQ_SIGNATURE,
++	PIRQ_VERSION,
++	32 + 16 * CONFIG_IRQ_SLOT_COUNT,/* Max. number of devices on the bus */
++	0x00,			/* Interrupt router bus */
++	(0x00 << 3) | 0x0,	/* Interrupt router device */
++	0,			/* IRQs devoted exclusively to PCI usage */
++	PCI_VID_SIS,		/* Vendor */
++	PCI_DID_SIS_SIS496,	/* Device */
++	0,			/* Miniport data */
++	{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, /* u8 rfu[11] */
++	0x54,			/* Checksum */
++	/* clang-format off */
++	{
++		/* bus,       dev|fn,   {link, bitmap}, {link, bitmap}, {link, bitmap}, {link, bitmap},  slot, rfu */
++		{0x00,(0x0b << 3)|0x0, {{0xc0, 0xdef8}, {0xc1, 0xdef8}, {0xc2, 0xdef8}, {0xc3, 0xdef8}}, 0x1, 0x0},
++		{0x00,(0x0d << 3)|0x0, {{0xc1, 0xdef8}, {0xc2, 0xdef8}, {0xc3, 0xdef8}, {0xc0, 0xdef8}}, 0x2, 0x0},
++		{0x00,(0x0f << 3)|0x0, {{0xc2, 0xdef8}, {0xc3, 0xdef8}, {0xc0, 0xdef8}, {0xc1, 0xdef8}}, 0x3, 0x0},
++	}
++	/* clang-format on */
++};
++
++/*
++
++NOTICE not sure if INTA is pirq0 or pirq3
++assume pirq0 = inta (slot 1 directly to regs but most likely it will be viceversa)
++
++INTA = reg 0xc0
++INTB = reg 0xc1
++INTC = reg 0xc2
++INTD = reg 0xc3
++
++slot1.intd	pin86 = pirq3
++slot1.intc	pin87 = pirq2
++slot1.intb	pin88 = pirq1
++slot1.inta	pin89 = pirq0
++
++slot2.intc	pin86
++slot2.intb	pin87
++slot2.inta	pin88
++slot2.intd	pin89
++
++slot3.intb	pin86
++slot3.inta	pin87
++slot3.intd	pin88
++slot3.intc	pin89
++
++
++*/
++
++
++unsigned long write_pirq_routing_table(unsigned long addr)
++{
++	return copy_pirq_routing_table(addr, &sis_irq_routing_table);
++}
+diff --git a/src/mainboard/zida/4dps/mainboard.c b/src/mainboard/zida/4dps/mainboard.c
+new file mode 100644
+index 0000000000..dc5703bd7c
+--- /dev/null
++++ b/src/mainboard/zida/4dps/mainboard.c
+@@ -0,0 +1,20 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <device/pci_ops.h>
++// #include <southbridge/sis/85c497/sis85c497.h>
++
++/**
++ * Mainboard specific enables.
++ *
++ * @param chip_info Ignored
++ */
++static void mainboard_init(void *chip_info)
++{
++	//write 0x89/0x88 to IO 0x250 (EFER) to enable superio
++	//	outb(0x6f, PM_IO_BASE + 0x37);
++
++}
++
++struct chip_operations mainboard_ops = {
++	.init = mainboard_init
++};
+diff --git a/src/mainboard/zida/4dps/romstage.c b/src/mainboard/zida/4dps/romstage.c
+new file mode 100644
+index 0000000000..e4d5513854
+--- /dev/null
++++ b/src/mainboard/zida/4dps/romstage.c
+@@ -0,0 +1,5 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include <arch/io.h>
++//#include <southbridge/intel/i82371eb/i82371eb.h>
++//#include <northbridge/intel/i440bx/raminit.h>
+diff --git a/src/mainboard/zida/Kconfig b/src/mainboard/zida/Kconfig
+new file mode 100644
+index 0000000000..cdda951b06
+--- /dev/null
++++ b/src/mainboard/zida/Kconfig
+@@ -0,0 +1,15 @@
++if VENDOR_ZIDA
++
++choice
++	prompt "Mainboard model"
++
++source "src/mainboard/zida/*/Kconfig.name"
++
++endchoice
++
++source "src/mainboard/zida/*/Kconfig"
++
++config MAINBOARD_VENDOR
++	default "Zida"
++
++endif # VENDOR_ZIDA
+diff --git a/src/mainboard/zida/Kconfig.name b/src/mainboard/zida/Kconfig.name
+new file mode 100644
+index 0000000000..4e716b8d8d
+--- /dev/null
++++ b/src/mainboard/zida/Kconfig.name
+@@ -0,0 +1,2 @@
++config VENDOR_ZIDA
++	bool "Zida"
+-- 
+2.46.1
+

@@ -1,0 +1,308 @@
+From 885d07b6cff3bfd85281c68d6fbf3be2e97d3ef6 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:38:59 +0200
+Subject: [PATCH 25/27] Support for ISA IDE fallback
+
+debug messages
+---
+ src/hw/ata.c | 94 +++++++++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 75 insertions(+), 19 deletions(-)
+
+diff --git a/src/hw/ata.c b/src/hw/ata.c
+index f788ce71..bdf4084f 100644
+--- a/src/hw/ata.c
++++ b/src/hw/ata.c
+@@ -88,7 +88,7 @@ ata_reset(struct atadrive_s *adrive_gf)
+     u16 iobase1 = GET_GLOBALFLAT(chan_gf->iobase1);
+     u16 iobase2 = GET_GLOBALFLAT(chan_gf->iobase2);
+ 
+-    dprintf(6, "ata_reset drive=%p\n", &adrive_gf->drive);
++    dprintf(12, "ata_reset drive=%p\n", &adrive_gf->drive);
+     // Pulse SRST
+     outb(ATA_CB_DC_HD15 | ATA_CB_DC_NIEN | ATA_CB_DC_SRST, iobase2+ATA_CB_DC);
+     udelay(5);
+@@ -129,7 +129,7 @@ done:
+     // Enable interrupts
+     outb(ATA_CB_DC_HD15, iobase2+ATA_CB_DC);
+ 
+-    dprintf(6, "ata_reset exit status=%x\n", status);
++    dprintf(12, "ata_reset exit status=%x\n", status);
+ }
+ 
+ // Check for drive RDY for 16bit interface command.
+@@ -216,12 +216,12 @@ ata_wait_data(u16 iobase1)
+         return status;
+ 
+     if (status & ATA_CB_STAT_ERR) {
+-        dprintf(6, "send_cmd : read error (status=%02x err=%02x)\n"
++        dprintf(12, "send_cmd : read error (status=%02x err=%02x)\n"
+                 , status, inb(iobase1 + ATA_CB_ERR));
+         return -4;
+     }
+     if (!(status & ATA_CB_STAT_DRQ)) {
+-        dprintf(6, "send_cmd : DRQ not set (status %02x)\n", status);
++        dprintf(12, "send_cmd : DRQ not set (status %02x)\n", status);
+         return -5;
+     }
+ 
+@@ -247,13 +247,13 @@ ata_cmd_nondata(struct atadrive_s *adrive_gf, struct ata_pio_command *cmd)
+         goto fail;
+ 
+     if (ret & ATA_CB_STAT_ERR) {
+-        dprintf(6, "nondata cmd : read error (status=%02x err=%02x)\n"
++        dprintf(12, "nondata cmd : read error (status=%02x err=%02x)\n"
+                 , ret, inb(iobase1 + ATA_CB_ERR));
+         ret = -4;
+         goto fail;
+     }
+     if (ret & ATA_CB_STAT_DRQ) {
+-        dprintf(6, "nondata cmd : DRQ set (status %02x)\n", ret);
++        dprintf(12, "nondata cmd : DRQ set (status %02x)\n", ret);
+         ret = -5;
+         goto fail;
+     }
+@@ -275,7 +275,7 @@ fail:
+ static int
+ ata_pio_transfer(struct disk_op_s *op, int iswrite, int blocksize)
+ {
+-    dprintf(16, "ata_pio_transfer id=%p write=%d count=%d bs=%d buf=%p\n"
++    dprintf(12, "ata_pio_transfer id=%p write=%d count=%d bs=%d buf=%p\n"
+             , op->drive_fl, iswrite, op->count, blocksize, op->buf_fl);
+ 
+     struct atadrive_s *adrive_gf = container_of(
+@@ -289,18 +289,34 @@ ata_pio_transfer(struct disk_op_s *op, int iswrite, int blocksize)
+     for (;;) {
+         if (iswrite) {
+             // Write data to controller
+-            dprintf(16, "Write sector id=%p dest=%p\n", op->drive_fl, buf_fl);
++            dprintf(12, "Write sector id=%p dest=%p\n", op->drive_fl, buf_fl);
+             if (CONFIG_ATA_PIO32)
+                 outsl_fl(iobase1, buf_fl, blocksize / 4);
+             else
+                 outsw_fl(iobase1, buf_fl, blocksize / 2);
+         } else {
+             // Read data from controller
+-            dprintf(16, "Read sector id=%p dest=%p\n", op->drive_fl, buf_fl);
++            dprintf(12, "Read sector id=%p dest=%p\n", op->drive_fl, buf_fl);
+             if (CONFIG_ATA_PIO32)
+                 insl_fl(iobase1, buf_fl, blocksize / 4);
+             else
+                 insw_fl(iobase1, buf_fl, blocksize / 2);
++
++#if 0
++        //pc2005
++if (buf_fl == 0x7c00) {
++u8 * dptr = buf_fl;
++for (unsigned xxx=0;xxx<512;xxx++) {
++    __dprintf("%02x ", dptr[xxx]);
++    if ((xxx%16)==15) {
++        __dprintf("\n");
++    }
++}
++__dprintf("\n");
++}
++#endif
++
++
+         }
+         buf_fl += blocksize;
+ 
+@@ -316,7 +332,7 @@ ata_pio_transfer(struct disk_op_s *op, int iswrite, int blocksize)
+             break;
+         status &= (ATA_CB_STAT_BSY | ATA_CB_STAT_DRQ | ATA_CB_STAT_ERR);
+         if (status != ATA_CB_STAT_DRQ) {
+-            dprintf(6, "ata_pio_transfer : more sectors left (status %02x)\n"
++            dprintf(12, "ata_pio_transfer : more sectors left (status %02x)\n"
+                     , status);
+             op->count -= count;
+             return -6;
+@@ -328,7 +344,7 @@ ata_pio_transfer(struct disk_op_s *op, int iswrite, int blocksize)
+     if (!iswrite)
+         status &= ~ATA_CB_STAT_DF;
+     if (status != 0) {
+-        dprintf(6, "ata_pio_transfer : no sectors left (status %02x)\n", status);
++        dprintf(12, "ata_pio_transfer : no sectors left (status %02x)\n", status);
+         return -7;
+     }
+ 
+@@ -730,11 +746,14 @@ init_drive_atapi(struct atadrive_s *dummy, u16 *buffer)
+ {
+     // Send an IDENTIFY_DEVICE_PACKET command to device
+     int ret = send_ata_identity(dummy, buffer, ATA_CMD_IDENTIFY_PACKET_DEVICE);
++dprintf(1, "BB1 %d\n", ret);
+     if (ret)
+         return NULL;
+ 
++
+     // Success - setup as ATAPI.
+     struct atadrive_s *adrive = init_atadrive(dummy, buffer);
++dprintf(1, "BB2 %p\n", adrive);
+     if (!adrive)
+         return NULL;
+     adrive->drive.type = DTYPE_ATA_ATAPI;
+@@ -752,6 +771,8 @@ init_drive_atapi(struct atadrive_s *dummy, u16 *buffer)
+ 
+     // fill cdidmap
+     if (iscd) {
++dprintf(1, "BB3\n");
++
+         int prio = bootprio_find_ata_device(adrive->chan_gf->pci_tmp,
+                                             adrive->chan_gf->chanid,
+                                             adrive->slave);
+@@ -762,6 +783,8 @@ init_drive_atapi(struct atadrive_s *dummy, u16 *buffer)
+         boot_add_cd(&adrive->drive, desc, prio);
+     }
+ 
++dprintf(1, "BB4\n");
++
+     return adrive;
+ }
+ 
+@@ -833,7 +856,7 @@ powerup_await_non_bsy(u16 base)
+             break;
+         orstatus |= status;
+         if (orstatus == 0xff) {
+-            dprintf(4, "powerup IDE floating\n");
++            dprintf(1, "powerup IDE floating\n");
+             return orstatus;
+         }
+         if (timer_check(SpinupEnd)) {
+@@ -842,7 +865,7 @@ powerup_await_non_bsy(u16 base)
+         }
+         yield();
+     }
+-    dprintf(6, "powerup iobase=%x st=%x\n", base, status);
++    dprintf(1, "powerup iobase=%x st=%x\n", base, status);
+     return status;
+ }
+ 
+@@ -857,18 +880,30 @@ ata_detect(void *data)
+     // Device detection
+     int didreset = 0;
+     u8 slave;
++
++// dprintf(1, "AA1\n");
++
+     for (slave=0; slave<=1; slave++) {
++
++// dprintf(1, "AA2 %d\n", slave);
++
+         // Wait for not-bsy.
+         u16 iobase1 = chan_gf->iobase1;
+         int status = powerup_await_non_bsy(iobase1);
+-        if (status < 0)
++// dprintf(1, "AA3 %d\n", status);
++        if (status < 0) {
++dprintf(1, "AA3cont\n");
+             continue;
++    }
+         u8 newdh = slave ? ATA_CB_DH_DEV1 : ATA_CB_DH_DEV0;
+         outb(newdh, iobase1+ATA_CB_DH);
+         ndelay(400);
+         status = powerup_await_non_bsy(iobase1);
+-        if (status < 0)
++// dprintf(1, "AA4 %d\n", status);
++        if (status < 0) {
++dprintf(1, "AA3cont\n");
+             continue;
++    }
+ 
+         // Check if ioport registers look valid.
+         outb(newdh, iobase1+ATA_CB_DH);
+@@ -877,7 +912,7 @@ ata_detect(void *data)
+         outb(0xaa, iobase1+ATA_CB_SN);
+         u8 sc = inb(iobase1+ATA_CB_SC);
+         u8 sn = inb(iobase1+ATA_CB_SN);
+-        dprintf(6, "ata_detect ata%d-%d: sc=%x sn=%x dh=%x\n"
++        dprintf(1, "ata_detect ata%d-%d: sc=%x sn=%x dh=%x\n"
+                 , chan_gf->ataid, slave, sc, sn, dh);
+         if (sc != 0x55 || sn != 0xaa || dh != newdh)
+             continue;
+@@ -914,7 +949,7 @@ ata_detect(void *data)
+         }
+ 
+         u16 resetresult = buffer[93];
+-        dprintf(6, "ata_detect resetresult=%04x\n", resetresult);
++        dprintf(1, "ata_detect resetresult=%04x\n", resetresult);
+         if (!slave && (resetresult & 0xdf61) == 0x4041)
+             // resetresult looks valid and device 0 is responding to
+             // device 1 requests - device 1 must not be present - skip
+@@ -965,14 +1000,18 @@ init_pciata(struct pci_device *pci, u8 prog_if)
+         }
+     }
+ 
++// dprintf(1, "init_pciata C1\n");
++
+     u32 port1, port2, irq;
+     if (prog_if & 1) {
++// dprintf(1, "init_pciata prog_if xx1\n");
+         port1 = pci_enable_iobar(pci, PCI_BASE_ADDRESS_0);
+         port2 = pci_enable_iobar(pci, PCI_BASE_ADDRESS_1);
+         if (!port1 || !port2)
+             return;
+         irq = pciirq;
+     } else {
++// dprintf(1, "init_pciata prog_if xx0\n");
+         port1 = PORT_ATA1_CMD_BASE;
+         port2 = PORT_ATA1_CTRL_BASE;
+         irq = IRQ_ATA1;
+@@ -980,12 +1019,14 @@ init_pciata(struct pci_device *pci, u8 prog_if)
+     init_controller(pci, 0, irq, port1, port2, master);
+ 
+     if (prog_if & 4) {
++// dprintf(1, "init_pciata prog_if 1xx\n");
+         port1 = pci_enable_iobar(pci, PCI_BASE_ADDRESS_2);
+         port2 = pci_enable_iobar(pci, PCI_BASE_ADDRESS_3);
+         if (!port1 || !port2)
+             return;
+         irq = pciirq;
+     } else {
++// dprintf(1, "init_pciata prog_if 0xx\n");
+         port1 = PORT_ATA2_CMD_BASE;
+         port2 = PORT_ATA2_CTRL_BASE;
+         irq = IRQ_ATA2;
+@@ -996,6 +1037,8 @@ init_pciata(struct pci_device *pci, u8 prog_if)
+ static void
+ found_genericata(struct pci_device *pci, void *arg)
+ {
++// dprintf(1, "found_genericata %x %x %x %x\n", pci->bdf, pci->vendor, pci->device, pci->class);
++
+     init_pciata(pci, pci->prog_if);
+ }
+ 
+@@ -1030,9 +1073,22 @@ ata_scan(void)
+     }
+ 
+     // Scan PCI bus for ATA adapters
++    int found = 0;
+     struct pci_device *pci;
+     foreachpci(pci) {
+-        pci_init_device(pci_ata_tbl, pci, NULL);
++        int tmp = pci_init_device(pci_ata_tbl, pci, NULL);
++        if (tmp == 0) {
++dprintf(1, "found PCI ATA\n");
++            found = 1;
++        }
++    }
++
++    if (found == 0) {
++dprintf(1, "force ISA ATA\n");
++        init_controller(NULL, 0, IRQ_ATA1
++                        , PORT_ATA1_CMD_BASE, PORT_ATA1_CTRL_BASE, 0);
++        init_controller(NULL, 1, IRQ_ATA2
++                        , PORT_ATA2_CMD_BASE, PORT_ATA2_CTRL_BASE, 0);
+     }
+ }
+ 
+@@ -1043,7 +1099,7 @@ ata_setup(void)
+     if (!CONFIG_ATA)
+         return;
+ 
+-    dprintf(3, "init hard drives\n");
++    dprintf(1, "init hard drives\n");
+ 
+     SpinupEnd = timer_calc(IDE_TIMEOUT);
+     ata_scan();
+-- 
+2.46.1
+

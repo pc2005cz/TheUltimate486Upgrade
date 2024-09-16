@@ -1,0 +1,60 @@
+From 64e4632f305dc7214b0a78373db082269771b843 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:40:30 +0200
+Subject: [PATCH 26/26] miscellaneous
+
+---
+ src/lib/cbfs.c     |  2 ++
+ src/lib/selfboot.c | 16 ++++++++++------
+ 2 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/src/lib/cbfs.c b/src/lib/cbfs.c
+index 7c451a1530..bab2e8c14c 100644
+--- a/src/lib/cbfs.c
++++ b/src/lib/cbfs.c
+@@ -572,6 +572,7 @@ void *_cbfs_alloc(const char *name, cbfs_allocator_t allocator, void *arg,
+ 	return ret;
+ }
+ 
++#if 0
+ void *_cbfs_unverified_area_alloc(const char *area, const char *name,
+ 				  cbfs_allocator_t allocator, void *arg, size_t *size_out)
+ {
+@@ -594,6 +595,7 @@ void *_cbfs_unverified_area_alloc(const char *area, const char *name,
+ 
+ 	return do_alloc(&mdata, &file_rdev, allocator, arg, size_out, true);
+ }
++#endif
+ 
+ void *_cbfs_default_allocator(void *arg, size_t size, const union cbfs_mdata *unused)
+ {
+diff --git a/src/lib/selfboot.c b/src/lib/selfboot.c
+index 1424142cae..7a6d328cf4 100644
+--- a/src/lib/selfboot.c
++++ b/src/lib/selfboot.c
+@@ -22,12 +22,16 @@ typedef int (*checker_t)(struct cbfs_payload_segment *cbfssegs, void *args);
+ static void cbfs_decode_payload_segment(struct cbfs_payload_segment *segment,
+ 		const struct cbfs_payload_segment *src)
+ {
+-	segment->type        = read_be32(&src->type);
+-	segment->compression = read_be32(&src->compression);
+-	segment->offset      = read_be32(&src->offset);
+-	segment->load_addr   = read_be64(&src->load_addr);
+-	segment->len         = read_be32(&src->len);
+-	segment->mem_len     = read_be32(&src->mem_len);
++	struct cbfs_payload_segment local;
++
++	memcpy(&local, src, sizeof(struct cbfs_payload_segment));
++
++	segment->type	= read_be32(&local.type);
++	segment->compression = read_be32(&local.compression);
++	segment->offset      = read_be32(&local.offset);
++	segment->load_addr   = read_be64(&local.load_addr);
++	segment->len	 = read_be32(&local.len);
++	segment->mem_len     = read_be32(&local.mem_len);
+ }
+ 
+ static int segment_targets_type(void *dest, unsigned long memsz,
+-- 
+2.46.1
+

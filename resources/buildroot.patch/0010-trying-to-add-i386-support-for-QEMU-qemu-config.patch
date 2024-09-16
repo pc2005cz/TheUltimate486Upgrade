@@ -1,0 +1,120 @@
+From 2c8656e8e4d9e18b9fce44fbaf32962282d40d15 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 06:01:05 +0200
+Subject: [PATCH 10/11] trying to add i386 support for QEMU + qemu config
+
+doesn't work, qemu will crash on 486 with siglongjmp() and receiving SIGALARM
+never architectures seems ok, maybe bug in libC?
+---
+ package/qemu/0900-i386_rdtsc.patch | 13 +++++++++
+ package/qemu/qemu.mk               | 43 ++++++++++++++++++------------
+ 2 files changed, 39 insertions(+), 17 deletions(-)
+ create mode 100644 package/qemu/0900-i386_rdtsc.patch
+
+diff --git a/package/qemu/0900-i386_rdtsc.patch b/package/qemu/0900-i386_rdtsc.patch
+new file mode 100644
+index 0000000000..47727a686a
+--- /dev/null
++++ b/package/qemu/0900-i386_rdtsc.patch
+@@ -0,0 +1,13 @@
++--- qemu-8.1.1_original/include/qemu/timer.h	2023-09-21 22:20:52.000000000 +0200
+++++ qemu-8.1.1/include/qemu/timer.h	2023-11-19 08:25:42.788086818 +0100
++@@ -872,7 +872,9 @@
++     return retval;
++ }
++ 
++-#elif defined(__i386__)
+++//#elif defined(__i386__)
+++//pc2005
+++#elif 0
++ 
++ static inline int64_t cpu_get_host_ticks(void)
++ {
+diff --git a/package/qemu/qemu.mk b/package/qemu/qemu.mk
+index afe0d8a196..73cb300c1d 100644
+--- a/package/qemu/qemu.mk
++++ b/package/qemu/qemu.mk
+@@ -139,11 +139,13 @@ endif
+ QEMU_OPTS += --target-list="$(QEMU_TARGET_LIST)"
+ endif
+ 
+-ifeq ($(BR2_TOOLCHAIN_USES_UCLIBC),y)
++#ifeq ($(BR2_TOOLCHAIN_USES_UCLIBC),y)
++#QEMU_OPTS += --disable-vhost-user
++#else
++#QEMU_OPTS += --enable-vhost-user
++#endif
++
+ QEMU_OPTS += --disable-vhost-user
+-else
+-QEMU_OPTS += --enable-vhost-user
+-endif
+ 
+ ifeq ($(BR2_PACKAGE_QEMU_SLIRP),y)
+ QEMU_OPTS += --enable-slirp
+@@ -206,12 +208,14 @@ else
+ QEMU_OPTS += --disable-libssh
+ endif
+ 
+-ifeq ($(BR2_PACKAGE_LIBUSB),y)
+-QEMU_OPTS += --enable-libusb
+-QEMU_DEPENDENCIES += libusb
+-else
++#ifeq ($(BR2_PACKAGE_LIBUSB),y)
++#QEMU_OPTS += --enable-libusb
++#QEMU_DEPENDENCIES += libusb
++#else
++#QEMU_OPTS += --disable-libusb
++#endif
++
+ QEMU_OPTS += --disable-libusb
+-endif
+ 
+ ifeq ($(BR2_PACKAGE_LIBVNCSERVER),y)
+ QEMU_OPTS += \
+@@ -234,12 +238,14 @@ else
+ QEMU_OPTS += --disable-vnc
+ endif
+ 
+-ifeq ($(BR2_PACKAGE_NETTLE),y)
+-QEMU_OPTS += --enable-nettle
+-QEMU_DEPENDENCIES += nettle
+-else
++#ifeq ($(BR2_PACKAGE_NETTLE),y)
++#QEMU_OPTS += --enable-nettle
++#QEMU_DEPENDENCIES += nettle
++#else
++#QEMU_OPTS += --disable-nettle
++#endif
++
+ QEMU_OPTS += --disable-nettle
+-endif
+ 
+ ifeq ($(BR2_PACKAGE_NUMACTL),y)
+ QEMU_OPTS += --enable-numa
+@@ -273,6 +279,9 @@ ifeq ($(BR2_STATIC_LIBS),y)
+ QEMU_OPTS += --static
+ endif
+ 
++#pc2005
++#QEMU_OPTS += --static
++
+ ifeq ($(BR2_PACKAGE_QEMU_BLOBS),y)
+ QEMU_OPTS += --enable-install-blobs
+ else
+@@ -331,9 +340,9 @@ define QEMU_CONFIGURE_CMDS
+ 			--disable-virtfs \
+ 			--disable-whpx \
+ 			--disable-xen \
+-			--enable-attr \
+-			--enable-kvm \
+-			--enable-vhost-net \
++			--disable-attr \
++			--disable-kvm \
++			--disable-vhost-net \
+ 			--disable-download \
+ 			--disable-hexagon-idef-parser \
+ 			$(QEMU_OPTS)
+-- 
+2.46.1
+

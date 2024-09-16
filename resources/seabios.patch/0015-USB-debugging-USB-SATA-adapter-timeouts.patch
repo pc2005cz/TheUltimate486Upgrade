@@ -1,0 +1,119 @@
+From f12715d9e778ff9de24c32c95cb4e8dbc7e1151f Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:29:46 +0200
+Subject: [PATCH 15/27] USB debugging (USB/SATA adapter timeouts)
+
+---
+ src/hw/usb-ehci.c |  8 ++++----
+ src/hw/usb-ohci.c | 11 +++++++++++
+ src/hw/usb-uhci.c |  8 ++++----
+ 3 files changed, 19 insertions(+), 8 deletions(-)
+
+diff --git a/src/hw/usb-ehci.c b/src/hw/usb-ehci.c
+index d01fa853..b1f091a5 100644
+--- a/src/hw/usb-ehci.c
++++ b/src/hw/usb-ehci.c
+@@ -187,7 +187,7 @@ ehci_waittick(struct usb_ehci_s *cntl)
+ static void
+ ehci_free_pipes(struct usb_ehci_s *cntl)
+ {
+-    dprintf(7, "ehci_free_pipes %p\n", cntl);
++    dprintf(1, "ehci_free_pipes %p\n", cntl);
+ 
+     struct ehci_qh *start = cntl->async_qh;
+     struct ehci_qh *pos = start;
+@@ -389,7 +389,7 @@ ehci_alloc_intr_pipe(struct usbdevice_s *usbdev
+     struct usb_ehci_s *cntl = container_of(
+         usbdev->hub->cntl, struct usb_ehci_s, usb);
+     int frameexp = usb_get_period(usbdev, epdesc);
+-    dprintf(7, "ehci_alloc_intr_pipe %p %d\n", &cntl->usb, frameexp);
++    dprintf(1, "ehci_alloc_intr_pipe %p %d\n", &cntl->usb, frameexp);
+ 
+     if (frameexp > 10)
+         frameexp = 10;
+@@ -460,7 +460,7 @@ ehci_realloc_pipe(struct usbdevice_s *usbdev, struct usb_pipe *upipe
+         return ehci_alloc_intr_pipe(usbdev, epdesc);
+     struct usb_ehci_s *cntl = container_of(
+         usbdev->hub->cntl, struct usb_ehci_s, usb);
+-    dprintf(7, "ehci_alloc_async_pipe %p %d\n", &cntl->usb, eptype);
++    dprintf(1, "ehci_alloc_async_pipe %p %d\n", &cntl->usb, eptype);
+ 
+     struct usb_pipe *usbpipe = usb_get_freelist(&cntl->usb, eptype);
+     if (usbpipe) {
+@@ -550,7 +550,7 @@ ehci_send_pipe(struct usb_pipe *p, int dir, const void *cmd
+     if (! CONFIG_USB_EHCI)
+         return -1;
+     struct ehci_pipe *pipe = container_of(p, struct ehci_pipe, pipe);
+-    dprintf(7, "ehci_send_pipe qh=%p dir=%d data=%p size=%d\n"
++    dprintf(1, "ehci_send_pipe qh=%p dir=%d data=%p size=%d\n"
+             , &pipe->qh, dir, data, datasize);
+ 
+     // Allocate tds on stack (with required alignment)
+diff --git a/src/hw/usb-ohci.c b/src/hw/usb-ohci.c
+index 90f60e64..0e1da348 100644
+--- a/src/hw/usb-ohci.c
++++ b/src/hw/usb-ohci.c
+@@ -520,9 +520,20 @@ ohci_send_pipe(struct usb_pipe *p, int dir, const void *cmd
+     pipe->ed.hwHeadP = (u32)tds | (pipe->ed.hwHeadP & ED_C);
+     pipe->ed.hwTailP = (u32)td;
+     barrier();
++    // dprintf(1, "O4a cmd %08x\n", pipe->regs->cmdstatus);
+     pipe->ed.hwINFO &= ~ED_SKIP;
++    // dprintf(1, "O4b %p\n", pipe);
++//    dprintf(1, "O4c %p\n", pipe->regs);
++    // dprintf(1, "O4d %p %08x\n", &pipe->regs->cmdstatus, statuscmd);
++
++    // dprintf(1, "O4e chd %08x\n", pipe->regs->ed_controlhead);
++    // dprintf(1, "O4f cc %08x\n", pipe->regs->ed_controlcurrent);
++    // dprintf(1, "O4g bhd %08x\n", pipe->regs->ed_bulkhead);
++    // dprintf(1, "O4h bc %08x\n", pipe->regs->ed_bulkcurrent);
++
+     writel(&pipe->regs->cmdstatus, statuscmd);
+ 
++    // dprintf(1, "O5\n");
+     int ret = wait_ed(&pipe->ed, usb_xfer_time(p, datasize));
+     pipe->ed.hwINFO |= ED_SKIP;
+     if (ret)
+diff --git a/src/hw/usb-uhci.c b/src/hw/usb-uhci.c
+index 075ed02c..f3faf75a 100644
+--- a/src/hw/usb-uhci.c
++++ b/src/hw/usb-uhci.c
+@@ -134,7 +134,7 @@ uhci_waittick(u16 iobase)
+ static void
+ uhci_free_pipes(struct usb_uhci_s *cntl)
+ {
+-    dprintf(7, "uhci_free_pipes %p\n", cntl);
++    dprintf(1, "uhci_free_pipes %p\n", cntl);
+ 
+     struct uhci_qh *pos = (void*)(cntl->framelist->links[0] & ~UHCI_PTR_BITS);
+     for (;;) {
+@@ -292,7 +292,7 @@ uhci_alloc_intr_pipe(struct usbdevice_s *usbdev
+     struct usb_uhci_s *cntl = container_of(
+         usbdev->hub->cntl, struct usb_uhci_s, usb);
+     int frameexp = usb_get_period(usbdev, epdesc);
+-    dprintf(7, "uhci_alloc_intr_pipe %p %d\n", &cntl->usb, frameexp);
++    dprintf(1, "uhci_alloc_intr_pipe %p %d\n", &cntl->usb, frameexp);
+ 
+     if (frameexp > 10)
+         frameexp = 10;
+@@ -369,7 +369,7 @@ uhci_realloc_pipe(struct usbdevice_s *usbdev, struct usb_pipe *upipe
+         return uhci_alloc_intr_pipe(usbdev, epdesc);
+     struct usb_uhci_s *cntl = container_of(
+         usbdev->hub->cntl, struct usb_uhci_s, usb);
+-    dprintf(7, "uhci_alloc_async_pipe %p %d\n", &cntl->usb, eptype);
++    dprintf(1, "uhci_alloc_async_pipe %p %d\n", &cntl->usb, eptype);
+ 
+     struct usb_pipe *usbpipe = usb_get_freelist(&cntl->usb, eptype);
+     if (usbpipe) {
+@@ -457,7 +457,7 @@ uhci_send_pipe(struct usb_pipe *p, int dir, const void *cmd
+     if (! CONFIG_USB_UHCI)
+         return -1;
+     struct uhci_pipe *pipe = container_of(p, struct uhci_pipe, pipe);
+-    dprintf(7, "uhci_send_pipe qh=%p dir=%d data=%p size=%d\n"
++    dprintf(1, "uhci_send_pipe qh=%p dir=%d data=%p size=%d\n"
+             , &pipe->qh, dir, data, datasize);
+     int maxpacket = GET_LOWFLAT(pipe->pipe.maxpacket);
+     int lowspeed = GET_LOWFLAT(pipe->pipe.speed);
+-- 
+2.46.1
+

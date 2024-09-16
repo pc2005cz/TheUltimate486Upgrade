@@ -1,0 +1,749 @@
+From b0171be321a415d17b2528ddb0d497c7bdd30dd0 Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 01:37:12 +0200
+Subject: [PATCH 22/27] OptionROM HACKs
+
+optionROM scan
+move SeaBIOS data to segment E (more conventional memory)
+debug messages
+---
+ src/config.h     |   2 +-
+ src/malloc.c     |  94 +++++++++++++++++---
+ src/malloc.h     |   3 +
+ src/optionroms.c | 221 ++++++++++++++++++++++++++++++++++++++---------
+ src/post.c       |  26 ++++--
+ 5 files changed, 289 insertions(+), 57 deletions(-)
+
+diff --git a/src/config.h b/src/config.h
+index 9abe355b..e10a82f5 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -34,7 +34,7 @@
+ #define BUILD_STACK_ADDR          0x7000
+ #define BUILD_S3RESUME_STACK_ADDR 0x1000
+ #define BUILD_AP_BOOT_ADDR        0x10000
+-#define BUILD_EBDA_MINIMUM        0x90000
++#define BUILD_EBDA_MINIMUM        0xe0000	//pc2005 9 to e (original 0x90000)
+ #define BUILD_LOWRAM_END          0xa0000
+ #define BUILD_ROM_START           0xc0000
+ #define BUILD_BIOS_ADDR           0xf0000
+diff --git a/src/malloc.c b/src/malloc.c
+index da840980..29ec22cc 100644
+--- a/src/malloc.c
++++ b/src/malloc.c
+@@ -15,6 +15,9 @@
+ #include "std/optionrom.h" // OPTION_ROM_ALIGN
+ #include "string.h" // memset
+ 
++const char *
++e820_type_name(u32 type);
++
+ // Information on a reserved area.
+ struct allocinfo_s {
+     struct hlist_node node;
+@@ -66,6 +69,9 @@ alloc_new(struct zone_s *zone, u32 size, u32 align, struct allocinfo_s *fill)
+             return new_range_end;
+         }
+     }
++
++    dprintf(1, "AA4\n");
++
+     return 0;
+ }
+ 
+@@ -208,9 +214,11 @@ zonelow_expand(u32 size, u32 align, struct allocinfo_s *fill)
+         newpos = ALIGN_DOWN(ebda_end - size, align);
+     u32 newbottom = ALIGN_DOWN(newpos, 1024);
+     u32 newebda = ALIGN_DOWN(newbottom - ebda_size * 1024, 1024);
+-    if (newebda < BUILD_EBDA_MINIMUM)
++    if (newebda < BUILD_EBDA_MINIMUM) {
+         // Not enough space.
++    dprintf(1, "+++++++++++++++not enough space ebda %x\n", newebda);
+         return 0;
++     }
+ 
+     // Move ebda
+     int ret = relocate_ebda(newebda, ebda_pos, ebda_size);
+@@ -236,8 +244,10 @@ u32
+ malloc_palloc(struct zone_s *zone, u32 size, u32 align)
+ {
+     ASSERT32FLAT();
+-    if (!size)
++    if (!size) {
++    dprintf(1, "AA0\n");
+         return 0;
++        }
+ 
+     // Find and reserve space for main allocation
+     struct allocdetail_s tempdetail;
+@@ -245,17 +255,20 @@ malloc_palloc(struct zone_s *zone, u32 size, u32 align)
+     u32 data = alloc_new(zone, size, align, &tempdetail.datainfo);
+     if (!CONFIG_MALLOC_UPPERMEMORY && !data && zone == &ZoneLow)
+         data = zonelow_expand(size, align, &tempdetail.datainfo);
+-    if (!data)
++    if (!data) {
++    // dprintf(1, "AA1\n");
+         return 0;
++        }
+ 
+     // Find and reserve space for bookkeeping.
+     struct allocdetail_s *detail = alloc_new_detail(&tempdetail);
+     if (!detail) {
++    // dprintf(1, "AA2\n");
+         alloc_free(&tempdetail.datainfo);
+         return 0;
+     }
+ 
+-    dprintf(8, "phys_alloc zone=%p size=%d align=%x ret=%x (detail=%p)\n"
++    dprintf(1, "phys_alloc zone=%p size=%d align=%x ret=%x (detail=%p)\n"
+             , zone, size, align, data, detail);
+ 
+     return data;
+@@ -376,6 +389,14 @@ rom_get_last(void)
+     return RomEnd;
+ }
+ 
++
++void
++rom_set_last(u32 newend)
++{
++    RomEnd = newend;
++}
++
++
+ // Request space for an optionrom in 0xc0000-0xf0000 area.
+ struct rom_header *
+ rom_reserve(u32 size)
+@@ -400,6 +421,14 @@ rom_confirm(u32 size)
+         warn_noalloc();
+         return -1;
+     }
++
++    dprintf(1, "romend:%x size:%x ALIGN:%x RES:%x\n",
++	    RomEnd,
++	    size,
++	    OPTION_ROM_ALIGN,
++	    ALIGN(RomEnd + size, OPTION_ROM_ALIGN)
++    );
++
+     RomEnd = ALIGN(RomEnd + size, OPTION_ROM_ALIGN);
+     return 0;
+ }
+@@ -413,7 +442,7 @@ void
+ malloc_preinit(void)
+ {
+     ASSERT32FLAT();
+-    dprintf(3, "malloc preinit\n");
++    dprintf(1, "malloc preinit !!! does e820_remove on segA-segE\n");
+ 
+     // Don't declare any memory between 0xa0000 and 0x100000
+     e820_remove(BUILD_LOWRAM_END, BUILD_BIOS_ADDR-BUILD_LOWRAM_END);
+@@ -427,6 +456,8 @@ malloc_preinit(void)
+     int i;
+     for (i=e820_count-1; i>=0; i--) {
+         struct e820entry *en = &e820_list[i];
++        dprintf(1, "  start:%016llx size:%016llx type:%s\n", en->start, en->size, e820_type_name(en->type));
++
+         u64 end = en->start + en->size;
+         if (end < 1024*1024)
+             break;
+@@ -447,12 +478,21 @@ malloc_preinit(void)
+         alloc_add(&ZoneTmpHigh, s, e);
+     }
+ 
++    dprintf(1, "A3\n");
++
+     // Populate regions
+     alloc_add(&ZoneTmpLow, BUILD_STACK_ADDR, BUILD_EBDA_MINIMUM);
++    dprintf(1, "A4\n");
+     if (highram_start) {
++
++    dprintf(1, "A5 start:%08x size:%08x\n", highram_start, highram_size);
++
+         alloc_add(&ZoneHigh, highram_start, highram_start + highram_size);
++    dprintf(1, "A6\n");
+         e820_add(highram_start, highram_size, E820_RESERVED);
++    dprintf(1, "A7\n");
+     }
++    dprintf(1, "A8\n");
+ }
+ 
+ void
+@@ -460,10 +500,10 @@ malloc_csm_preinit(u32 low_pmm, u32 low_pmm_size, u32 hi_pmm, u32 hi_pmm_size)
+ {
+     ASSERT32FLAT();
+ 
+-    if (hi_pmm_size > BUILD_MAX_HIGHTABLE) {
++    if (hi_pmm_size > BUILD_MIN_HIGHTABLE) {
+         u32 hi_pmm_end = hi_pmm + hi_pmm_size;
+-        alloc_add(&ZoneTmpHigh, hi_pmm, hi_pmm_end - BUILD_MAX_HIGHTABLE);
+-        alloc_add(&ZoneHigh, hi_pmm_end - BUILD_MAX_HIGHTABLE, hi_pmm_end);
++        alloc_add(&ZoneTmpHigh, hi_pmm, hi_pmm_end - BUILD_MIN_HIGHTABLE);
++        alloc_add(&ZoneHigh, hi_pmm_end - BUILD_MIN_HIGHTABLE, hi_pmm_end);
+     } else {
+         alloc_add(&ZoneTmpHigh, hi_pmm, hi_pmm + hi_pmm_size);
+     }
+@@ -480,6 +520,9 @@ calcRamSize(void)
+     int i;
+     for (i=e820_count-1; i>=0; i--) {
+         struct e820entry *en = &e820_list[i];
++
++	    dprintf(1, "  start:%016llx size:%016llx type:%s\n", en->start, en->size, e820_type_name(en->type));
++
+         u64 end = en->start + en->size;
+         u32 type = en->type;
+         if (end <= 0xffffffff && (type == E820_ACPI || type == E820_RAM)) {
+@@ -488,6 +531,8 @@ calcRamSize(void)
+         }
+     }
+     LegacyRamSize = rs >= 1024*1024 ? rs : 1024*1024;
++
++//  LegacyRamSize -= 4* 64 * 1024;  //TODO delete pc2005
+ }
+ 
+ // Update pointers after code relocation.
+@@ -534,7 +579,10 @@ malloc_prepboot(void)
+     dprintf(3, "malloc finalize\n");
+ 
+     u32 base = rom_get_max();
+-    memset((void*)RomEnd, 0, base-RomEnd);
++    // memset((void*)RomEnd, 0, base-RomEnd);
++    //TEST pc2005
++
++
+     if (CONFIG_MALLOC_UPPERMEMORY) {
+         // Place an optionrom signature around used low mem area.
+         struct rom_header *dummyrom = (void*)base;
+@@ -545,7 +593,9 @@ malloc_prepboot(void)
+ 
+     // Reserve more low-mem if needed.
+     u32 endlow = GET_BDA(mem_size_kb)*1024;
+-    e820_add(endlow, BUILD_LOWRAM_END-endlow, E820_RESERVED);
++//    e820_add(endlow, BUILD_LOWRAM_END-endlow, E820_RESERVED);	//pc2005
++
++	dprintf(1, "xyz %x %x\n", BUILD_LOWRAM_END, endlow);
+ 
+     // Clear unused f-seg ram.
+     struct allocinfo_s *info = alloc_find_lowest(&ZoneFSeg);
+@@ -562,5 +612,29 @@ malloc_prepboot(void)
+         dprintf(1, "Returned %d bytes of ZoneHigh\n", giveback);
+     }
+ 
++#if 0
++//http://www.uruk.org/orig-grub/mem64mb.html
++
++//pc2005 reserve videobios?
++dprintf(1, "add vbios\n");
++e820_add(0xc0000, 0x10000, E820_RESERVED);
++
++dprintf(1, "add dseg\n");
++e820_add(0xd0000, 0x10000, E820_RESERVED);
++
++dprintf(1, "add vram\n");
++e820_add(0xa0000, 0x20000, E820_RESERVED);
++
++#endif
++
++#if 0
++dprintf(1, "add zero area\n");
++e820_add(0x0, 0x1000, E820_RESERVED);
++#endif
++
++
++dprintf(1, "add eseg\n");
++e820_add(0xe0000, 0x10000, E820_RESERVED);
++
+     calcRamSize();
+ }
+diff --git a/src/malloc.h b/src/malloc.h
+index 960a7f80..7d702d16 100644
+--- a/src/malloc.h
++++ b/src/malloc.h
+@@ -7,6 +7,9 @@
+ extern struct zone_s ZoneLow, ZoneHigh, ZoneFSeg, ZoneTmpLow, ZoneTmpHigh;
+ u32 rom_get_max(void);
+ u32 rom_get_last(void);
++
++void rom_set_last(u32 newend);	//pc2005
++
+ struct rom_header *rom_reserve(u32 size);
+ int rom_confirm(u32 size);
+ void malloc_csm_preinit(u32 low_pmm, u32 low_pmm_size, u32 hi_pmm,
+diff --git a/src/optionroms.c b/src/optionroms.c
+index e906ab97..dcc0cff8 100644
+--- a/src/optionroms.c
++++ b/src/optionroms.c
+@@ -49,6 +49,8 @@ __callrom(struct rom_header *rom, u16 offset, u16 bdf)
+     start_preempt();
+     farcall16big(&br);
+     finish_preempt();
++
++//dprintf(1, "after option rom\n");
+ }
+ 
+ // Execute a given option rom at the standard entry vector.
+@@ -69,8 +71,8 @@ call_bcv(u16 seg, u16 ip)
+ static int
+ is_valid_rom(struct rom_header *rom)
+ {
+-    dprintf(6, "Checking rom %p (sig %x size %d)\n"
+-            , rom, rom->signature, rom->size);
++    dprintf(1, "Checking rom %p (sig %x size %d B)\n"
++            , rom, rom->signature, rom->size * 512);
+     if (rom->signature != OPTION_ROM_SIGNATURE)
+         return 0;
+     if (! rom->size)
+@@ -125,23 +127,54 @@ get_pci_rom(struct rom_header *rom)
+ static int
+ init_optionrom(struct rom_header *rom, u16 bdf, int isvga)
+ {
+-    if (! is_valid_rom(rom))
++    dprintf(1, "init_optionrom %p\n", rom);
++
++    if (! is_valid_rom(rom)) {
++        dprintf(1, "NOT VALID ROM?\n");
+         return -1;
+-    struct rom_header *newrom = rom_reserve(rom->size * 512);
++    }
++
++    u8 romblocks = rom->size;
++
++dprintf(1, "ROM size %u*512 B\n", romblocks);
++
++    struct rom_header *newrom = rom_reserve(romblocks * 512);
+     if (!newrom) {
+         warn_noalloc();
+         return -1;
+     }
+-    if (newrom != rom)
+-        memmove(newrom, rom, rom->size * 512);
+ 
+-    tpm_option_rom(newrom, rom->size * 512);
++    dprintf(1, "ROM memmove test %p %p\n", newrom, rom);
++
++    if (newrom != rom) {
++        memmove(newrom, rom, romblocks * 512);
++    }
++
++dprintf(1, "newROM size %u*512 B\n", newrom->size);
++
++    tpm_option_rom(newrom, romblocks * 512);
++
++    // dprintf(1, "IO4\n");
++
++    if (isvga || get_pnp_rom(newrom)) {
++        dprintf(1, "IO5 !!! callrom (VGA or PNP)\n");
++
++wbinvd();
+ 
+-    if (isvga || get_pnp_rom(newrom))
+         // Only init vga and PnP roms here.
+         callrom(newrom, bdf);
++    }
++
++    dprintf(1, "ROM size after callrom %u*512 B\n", newrom->size);
++
++    //NOTICE should use which original rom size was copied
++    //NOTICE adaptec scsi change its own size of shadow copy
++    int ret = rom_confirm(romblocks * 512);
++
++    // dprintf(1, "IO7\n");
++
++    return ret;
+ 
+-    return rom_confirm(newrom->size * 512);
+ }
+ 
+ #define RS_PCIROM (1LL<<33)
+@@ -235,9 +268,11 @@ copy_rom(struct rom_header *rom)
+         warn_noalloc();
+         return NULL;
+     }
+-    dprintf(4, "Copying option rom (size %d) from %p to %p\n"
++    dprintf(1, "Copying option rom (size %d) from %p to %p\n"
+             , romsize, rom, newrom);
++
+     iomemcpy(newrom, rom, romsize);
++
+     return newrom;
+ }
+ 
+@@ -245,10 +280,10 @@ copy_rom(struct rom_header *rom)
+ static struct rom_header *
+ map_pcirom(struct pci_device *pci)
+ {
+-    dprintf(6, "Attempting to map option rom on dev %pP\n", pci);
++    dprintf(1, "Attempting to map option rom on dev %pP\n", pci);
+ 
+     if ((pci->header_type & 0x7f) != PCI_HEADER_TYPE_NORMAL) {
+-        dprintf(6, "Skipping non-normal pci device (type=%x)\n"
++        dprintf(1, "Skipping non-normal pci device (type=%x)\n"
+                 , pci->header_type);
+         return NULL;
+     }
+@@ -258,15 +293,18 @@ map_pcirom(struct pci_device *pci)
+     pci_config_writel(bdf, PCI_ROM_ADDRESS, ~PCI_ROM_ADDRESS_ENABLE);
+     u32 sz = pci_config_readl(bdf, PCI_ROM_ADDRESS);
+ 
+-    dprintf(6, "Option rom sizing returned %x %x\n", orig, sz);
++    dprintf(1, "Option rom sizing returned %x %x\n", orig, sz);
+     orig &= ~PCI_ROM_ADDRESS_ENABLE;
+     if (!sz || sz == 0xffffffff)
+         goto fail;
+ 
+-    if (orig == sz || (u32)(orig + 4*1024*1024) < 20*1024*1024) {
++    // TODO machine with less than 16MiB RAM
++    // UMC can have PCI space right after RAM
++    // if ((orig == sz) || ((u32)(orig + 4*1024*1024) < 20*1024*1024)) {
++    if ((orig == sz) || ((u32) orig < 4*1024*1024)) {
+         // Don't try to map to a pci addresses at its max, in the last
+         // 4MiB of ram, or the first 16MiB of ram.
+-        dprintf(6, "Preset rom address doesn't look valid\n");
++        dprintf(1, "Preset rom address doesn't look valid\n");
+         goto fail;
+     }
+ 
+@@ -275,26 +313,28 @@ map_pcirom(struct pci_device *pci)
+ 
+     struct rom_header *rom = (void*)orig;
+     for (;;) {
+-        dprintf(5, "Inspecting possible rom at %p (vd=%04x:%04x bdf=%pP)\n"
++        dprintf(1, "Inspecting possible rom at %p (vd=%04x:%04x bdf=%pP)\n"
+                 , rom, pci->vendor, pci->device, pci);
+         if (rom->signature != OPTION_ROM_SIGNATURE) {
+-            dprintf(6, "No option rom signature (got %x)\n", rom->signature);
+-            goto fail;
++            dprintf(1, "No option rom signature (got %x)\n", rom->signature);
++        //ignore signature
++            // goto fail;
+         }
+         struct pci_data *pd = get_pci_rom(rom);
+         if (! pd) {
+-            dprintf(6, "No valid pci signature found\n");
+-            goto fail;
++            dprintf(1, "No valid pci signature found\n");
++        //ignore signature
++            // goto fail;
+         }
+ 
+         if (pd->vendor == pci->vendor && pd->device == pci->device
+             && pd->type == PCIROM_CODETYPE_X86)
+             // A match
+             break;
+-        dprintf(6, "Didn't match dev/ven (got %04x:%04x) or type (got %d)\n"
++        dprintf(1, "Didn't match dev/ven (got %04x:%04x) or type (got %d)\n"
+                 , pd->vendor, pd->device, pd->type);
+         if (pd->indicator & 0x80) {
+-            dprintf(6, "No more images left\n");
++            dprintf(1, "No more images left\n");
+             goto fail;
+         }
+         rom = (void*)((u32)rom + pd->ilen * 512);
+@@ -326,7 +366,7 @@ static void boot_irq_restore(void)
+ static void
+ init_pcirom(struct pci_device *pci, int isvga, u64 *sources)
+ {
+-    dprintf(4, "Attempting to init PCI bdf %pP (vd %04x:%04x)\n"
++    dprintf(1, "Attempting to init PCI bdf %pP (vd %04x:%04x)\n"
+             , pci, pci->vendor, pci->device);
+ 
+     char fname[17];
+@@ -334,16 +374,24 @@ init_pcirom(struct pci_device *pci, int isvga, u64 *sources)
+              , pci->vendor, pci->device);
+     struct romfile_s *file = romfile_find(fname);
+     struct rom_header *rom = NULL;
+-    if (file)
++    if (file) {
+         rom = deploy_romfile(file);
+-    else if (RunPCIroms > 1 || (RunPCIroms == 1 && isvga))
++dprintf(1, "PCIROM1 %p\n", rom);
++        }
++    else if (RunPCIroms > 1 || (RunPCIroms == 1 && isvga)) {
+         rom = map_pcirom(pci);
+-    if (! rom)
++dprintf(1, "PCIROM2 %p\n", rom);
++        }
++    if (! rom) {
++dprintf(1, "PCI NO ROM\n");
+         // No ROM present.
+         return;
++        }
+     int irq_was_captured = boot_irq_captured();
+     struct pnp_data *pnp = get_pnp_rom(rom);
+     setRomSource(sources, rom, RS_PCIROM | (u32)pci);
++
++dprintf(1, "PCI bef init\n");
+     init_optionrom(rom, pci->bdf, isvga);
+     if (boot_irq_captured() && !irq_was_captured &&
+         !file && !isvga && pnp) {
+@@ -366,11 +414,17 @@ optionrom_setup(void)
+     if (! CONFIG_OPTIONROMS)
+         return;
+ 
++	//TODO should first do ISA ROM and then PCI ROM
++
++rom_set_last(0xd0000);
++
+     dprintf(1, "Scan for option roms\n");
+     u64 sources[(BUILD_BIOS_ADDR - BUILD_ROM_START) / OPTION_ROM_ALIGN];
+     memset(sources, 0, sizeof(sources));
+     u32 post_vga = rom_get_last();
+ 
++dprintf(1, "==== rest of option ROMs @%x\n", post_vga);
++
+     // Find and deploy PCI roms.
+     struct pci_device *pci;
+     foreachpci(pci) {
+@@ -387,14 +441,30 @@ optionrom_setup(void)
+ 
+     // All option roms found and deployed - now build BEV/BCV vectors.
+ 
++dprintf(1, "rom end2 %x\n", rom_get_last());
++
+     u32 pos = post_vga;
++
++    //TODO temp
++    // pos = 0xd0000;
++
++    //NOTICE rescan ROM space only until end of detected ROMs
+     while (pos < rom_get_last()) {
++    // while (pos < 0xe0000) {	//pc2005
++
++dprintf(1, "rom end3 %x, pos %x\n", rom_get_last(), pos);
++
+         struct rom_header *rom = (void*)pos;
+         if (! is_valid_rom(rom)) {
+             pos += OPTION_ROM_ALIGN;
+             continue;
+         }
+         pos += ALIGN(rom->size * 512, OPTION_ROM_ALIGN);
++
++// pos += ALIGN(pos, 0x10000);
++
++dprintf(1, "pre pnp\n");
++
+         struct pnp_data *pnp = get_pnp_rom(rom);
+         if (! pnp) {
+             // Legacy rom.
+@@ -402,6 +472,9 @@ optionrom_setup(void)
+                          , getRomPriority(sources, rom, 0));
+             continue;
+         }
++
++dprintf(1, "post pnp\n");
++
+         // PnP rom - check for BEV and BCV boot capabilities.
+         int instance = 0;
+         while (pnp) {
+@@ -426,11 +499,11 @@ optionrom_setup(void)
+ int ScreenAndDebug;
+ struct rom_header *VgaROM;
+ 
+-static void try_setup_display_other(void)
++static int try_setup_display_other(void)
+ {
+     struct pci_device *pci;
+ 
+-    dprintf(1, "No VGA found, scan for other display\n");
++    dprintf(1, "No VGA found, scan for other PCI display\n");
+ 
+     foreachpci(pci) {
+         if (pci->class != PCI_CLASS_DISPLAY_OTHER)
+@@ -441,9 +514,17 @@ static void try_setup_display_other(void)
+         dprintf(1, "Other display found at %pP\n", pci);
+         pci_config_maskw(pci->bdf, PCI_COMMAND, 0,
+                          PCI_COMMAND_IO | PCI_COMMAND_MEMORY);
+-        init_optionrom(rom, pci->bdf, 1);
+-        return;
++
++        if (init_optionrom(rom, pci->bdf, 1)) {
++        //not found
++        return -1;
+     }
++
++    //found
++        return 0;
++    }
++
++    return -1;
+ }
+ 
+ // Call into vga code to turn on console.
+@@ -458,34 +539,94 @@ vgarom_setup(void)
+     dprintf(1, "Scan for VGA option rom\n");
+ 
+     // Load some config settings that impact VGA.
+-    EnforceChecksum = romfile_loadint("etc/optionroms-checksum", 1);
++    EnforceChecksum = romfile_loadint("etc/optionroms-checksum", 0);
+     S3ResumeVga = romfile_loadint("etc/s3-resume-vga-init", CONFIG_QEMU);
+     RunPCIroms = romfile_loadint("etc/pci-optionrom-exec", 2);
+     ScreenAndDebug = romfile_loadint("etc/screen-and-debug", 1);
+ 
++    // NOTICE expect to have shadow enabled
++    // NOTICE expect writeable
++    // NOTICE probably no caching
++
+     // Clear option rom memory
+     memset((void*)BUILD_ROM_START, 0, rom_get_max() - BUILD_ROM_START);
+ 
++// dprintf(1, " SSS %x\n", rom_get_max() - BUILD_ROM_START);
++
+     // Find and deploy PCI VGA rom.
+     struct pci_device *pci;
+     foreachpci(pci) {
+-        if (!is_pci_vga(pci))
++        if (!is_pci_vga(pci)) {
+             continue;
++        }
++
++        dprintf(1, " found PCI VGA\n");
+         vgahook_setup(pci);
+         init_pcirom(pci, 1, NULL);
+         have_vga = 1;
+         break;
+     }
+-    if (!have_vga)
+-        try_setup_display_other();
+ 
+-    // Find and deploy CBFS vga-style roms not associated with a device.
+-    run_file_roms("vgaroms/", 1, NULL);
+-    rom_reserve(0);
++    if (!have_vga) {
++        if (!try_setup_display_other()) {
++            have_vga = 1;
++        }
++    }
++
++    if (!have_vga) {
++        // Find and deploy CBFS vga-style roms not associated with a device.
++        run_file_roms("vgaroms/", 1, NULL);
++        rom_reserve(0);
++
++        if (rom_get_last() != BUILD_ROM_START) {
++            // VGA rom found
++            VgaROM = (void*)BUILD_ROM_START;
++
++            have_vga = 1;
++        }
++    }
++
++    if (!have_vga) {
++        dprintf(1, " check ISA VGA\n");
+ 
+-    if (rom_get_last() != BUILD_ROM_START)
+-        // VGA rom found
+-        VgaROM = (void*)BUILD_ROM_START;
++#if 1   //UMC
++        //set from RAM shadow to ROM
++        const u16 bdf = pci_to_bdf(0, 0x10, 0);
++
++        u8 val = pci_config_readb(bdf, 0x54);
++        val &= ~2;  //C_0000 - C_7FFF
++        val &= ~4;  //C_8000 - C_BFFF
++        val &= ~8;  //C_C000 - C_FFFF
++        pci_config_writeb(bdf, 0x54, val);
++
++        //TODO on WT-only 486
++        wbinvd();
++        // asm volatile("invd": : :"memory");
++#endif
++
++        struct rom_header *rom = (struct rom_header *) 0xc0000;
++
++        if (rom->size > (0x8000/512)) {
++            dprintf(1, "fixme: ISA VGA ROM is >32kiB\n");
++        }
++
++        if (! init_optionrom(rom, 0, 1)) {
++            dprintf(1, "use ISA VGA ROM, size %u\n", rom->size*512);
++            have_vga = 1;
++        } else {
++#if 0   //UMC
++            //set from ROM to RAM shadow
++            const u16 bdf = pci_to_bdf(0, 0x10, 0);
++            u8 val = pci_config_readb(bdf, 0x54);
++            val |= 2;
++            pci_config_writeb(bdf, 0x54, val);
++
++            //TODO on WT-only 486
++            wbinvd();
++            // asm volatile("invd": : :"memory");
++#endif
++        }
++    }
+ }
+ 
+ void
+diff --git a/src/post.c b/src/post.c
+index ea0dce7c..c95ffd09 100644
+--- a/src/post.c
++++ b/src/post.c
+@@ -73,29 +73,41 @@ ivt_init(void)
+ static void
+ bda_init(void)
+ {
+-    dprintf(3, "init bda\n");
++    dprintf(3, "init bda %x\n", SEG_BDA);
+ 
+     struct bios_data_area_s *bda = MAKE_FLATPTR(SEG_BDA, 0);
+     memset(bda, 0, sizeof(*bda));
+ 
+     int esize = EBDA_SIZE_START;
+-    u16 ebda_seg = EBDA_SEGMENT_START;
+-    if (!CONFIG_MALLOC_UPPERMEMORY)
++//    u16 ebda_seg = EBDA_SEGMENT_START;
++    u16 ebda_seg = 0xe000;	//pc2005 TODO
++
++    dprintf(3, "EBDA SEG %x %u\n", ebda_seg, esize);
++
++    if (!CONFIG_MALLOC_UPPERMEMORY) {
+         ebda_seg = FLATPTR_TO_SEG(ALIGN_DOWN(SYMBOL(final_varlow_start), 1024)
+                                   - EBDA_SIZE_START*1024);
++
++        dprintf(3, "EBDA SEG !UPPER %x\n", ebda_seg);
++    }
++
+     SET_BDA(ebda_seg, ebda_seg);
+ 
+-    SET_BDA(mem_size_kb, ebda_seg / (1024/16));
++//pc2005
++//    SET_BDA(mem_size_kb, ebda_seg / (1024/16));
++    SET_BDA(mem_size_kb, 0xa000 / (1024/16));
+ 
+     // Init ebda
+     struct extended_bios_data_area_s *ebda = get_ebda_ptr();
+     memset(ebda, 0, sizeof(*ebda));
+     ebda->size = esize;
+ 
+-    e820_add((u32)ebda, BUILD_LOWRAM_END-(u32)ebda, E820_RESERVED);
++//    e820_add((u32)ebda, BUILD_LOWRAM_END-(u32)ebda, E820_RESERVED);
++    e820_add((u32)ebda, 0xf0000-(u32)ebda, E820_RESERVED);
+ 
+     // Init extra stack
+     StackPos = &ExtraStack[BUILD_EXTRA_STACK_SIZE] - SYMBOL(zonelow_base);
++    dprintf(1, "stackpos %p %p %x\n", StackPos, ExtraStack, SYMBOL(zonelow_base));
+ }
+ 
+ void
+@@ -169,7 +181,9 @@ prepareboot(void)
+     // Finalize data structures before boot
+     cdrom_prepboot();
+     pmm_prepboot();
++
+     malloc_prepboot();
++
+     e820_prepboot();
+ 
+     HaveRunPost = 2;
+@@ -183,7 +197,7 @@ void VISIBLE32FLAT
+ startBoot(void)
+ {
+     // Clear low-memory allocations (required by PMM spec).
+-    memset((void*)BUILD_STACK_ADDR, 0, BUILD_EBDA_MINIMUM - BUILD_STACK_ADDR);
++//    memset((void*)BUILD_STACK_ADDR, 0, BUILD_EBDA_MINIMUM - BUILD_STACK_ADDR);
+ 
+     dprintf(3, "Jump to int19\n");
+     struct bregs br;
+-- 
+2.46.1
+

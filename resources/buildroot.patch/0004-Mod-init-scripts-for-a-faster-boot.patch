@@ -1,0 +1,112 @@
+From 0c8f2c54e8121cbd5ac0354bd39ac93c07da941a Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:54:18 +0200
+Subject: [PATCH 04/11] Mod init scripts for a faster boot
+
+---
+ package/busybox/busybox.mk                        |  4 ++--
+ package/ifupdown-scripts/ifupdown-scripts.mk      | 15 ++++++++++++++-
+ package/skeleton-init-sysv/skeleton/etc/fstab     |  3 ++-
+ package/urandom-scripts/urandom-scripts.mk        |  2 +-
+ .../xserver_xorg-server/xserver_xorg-server.mk    |  2 +-
+ 5 files changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/package/busybox/busybox.mk b/package/busybox/busybox.mk
+index eb5e7ad922..dac8a76ee1 100644
+--- a/package/busybox/busybox.mk
++++ b/package/busybox/busybox.mk
+@@ -290,12 +290,12 @@ ifeq ($(BR2_PACKAGE_SYSKLOGD)$(BR2_PACKAGE_RSYSLOG)$(BR2_PACKAGE_SYSLOG_NG),)
+ define BUSYBOX_INSTALL_LOGGING_SCRIPT
+ 	if grep -q CONFIG_SYSLOGD=y $(@D)/.config; \
+ 	then \
+-		$(INSTALL) -m 0755 -D package/busybox/S01syslogd \
++		$(INSTALL) -m 0644 -D package/busybox/S01syslogd \
+ 			$(TARGET_DIR)/etc/init.d/S01syslogd; \
+ 	fi; \
+ 	if grep -q CONFIG_KLOGD=y $(@D)/.config; \
+ 	then \
+-		$(INSTALL) -m 0755 -D package/busybox/S02klogd \
++		$(INSTALL) -m 0644 -D package/busybox/S02klogd \
+ 			$(TARGET_DIR)/etc/init.d/S02klogd; \
+ 	fi
+ endef
+diff --git a/package/ifupdown-scripts/ifupdown-scripts.mk b/package/ifupdown-scripts/ifupdown-scripts.mk
+index 5ef032142c..d75cf31170 100644
+--- a/package/ifupdown-scripts/ifupdown-scripts.mk
++++ b/package/ifupdown-scripts/ifupdown-scripts.mk
+@@ -9,6 +9,18 @@ define IFUPDOWN_SCRIPTS_PREAMBLE
+ 		> $(TARGET_DIR)/etc/network/interfaces
+ endef
+ 
++define IFUPDOWN_SCRIPTS_486
++	( \
++		echo ; \
++		echo "auto enp0s11"; \
++		echo "iface enp0s11 inet static"; \
++		echo "  address 10.0.0.96"; \
++		echo "  netmask 255.255.254.0"; \
++		echo "  gateway 10.0.0.80"; \
++		echo "  dns-server 10.0.0.80"; \
++	) >> $(TARGET_DIR)/etc/network/interfaces
++endef
++
+ define IFUPDOWN_SCRIPTS_LOCALHOST
+ 	( \
+ 		echo ; \
+@@ -51,10 +63,11 @@ define IFUPDOWN_SCRIPTS_INSTALL_INIT_OPENRC
+ endef
+ 
+ define IFUPDOWN_SCRIPTS_INSTALL_INIT_SYSV
+-	$(INSTALL) -D -m 0755 $(IFUPDOWN_SCRIPTS_PKGDIR)/S40network \
++	$(INSTALL) -D -m 0644 $(IFUPDOWN_SCRIPTS_PKGDIR)/S40network \
+ 		$(TARGET_DIR)/etc/init.d/S40network
+ 	$(IFUPDOWN_SCRIPTS_PREAMBLE)
+ 	$(IFUPDOWN_SCRIPTS_LOCALHOST)
++	$(IFUPDOWN_SCRIPTS_486)
+ 	$(IFUPDOWN_SCRIPTS_DHCP)
+ endef
+ 
+diff --git a/package/skeleton-init-sysv/skeleton/etc/fstab b/package/skeleton-init-sysv/skeleton/etc/fstab
+index 169054b74f..c084d8f4e5 100644
+--- a/package/skeleton-init-sysv/skeleton/etc/fstab
++++ b/package/skeleton-init-sysv/skeleton/etc/fstab
+@@ -1,8 +1,9 @@
+ # <file system>	<mount pt>	<type>	<options>	<dump>	<pass>
+-/dev/root	/		ext2	rw,noauto	0	1
++/dev/root	/		ext4	rw,noauto	0	1
+ proc		/proc		proc	defaults	0	0
+ devpts		/dev/pts	devpts	defaults,gid=5,mode=620,ptmxmode=0666	0	0
+ tmpfs		/dev/shm	tmpfs	mode=0777	0	0
+ tmpfs		/tmp		tmpfs	mode=1777	0	0
+ tmpfs		/run		tmpfs	mode=0755,nosuid,nodev	0	0
+ sysfs		/sys		sysfs	defaults	0	0
++/linux.swap	swap		swap	defaults	0	0
+diff --git a/package/urandom-scripts/urandom-scripts.mk b/package/urandom-scripts/urandom-scripts.mk
+index 89abdfff72..68e5070f8d 100644
+--- a/package/urandom-scripts/urandom-scripts.mk
++++ b/package/urandom-scripts/urandom-scripts.mk
+@@ -5,7 +5,7 @@
+ ################################################################################
+ 
+ define URANDOM_SCRIPTS_INSTALL_INIT_SYSV
+-	$(INSTALL) -D -m 0755 $(URANDOM_SCRIPTS_PKGDIR)/S01seedrng \
++	$(INSTALL) -D -m 0644 $(URANDOM_SCRIPTS_PKGDIR)/S01seedrng \
+ 		$(TARGET_DIR)/etc/init.d/S01seedrng
+ endef
+ 
+diff --git a/package/x11r7/xserver_xorg-server/xserver_xorg-server.mk b/package/x11r7/xserver_xorg-server/xserver_xorg-server.mk
+index ede03d024c..555f2bfad6 100644
+--- a/package/x11r7/xserver_xorg-server/xserver_xorg-server.mk
++++ b/package/x11r7/xserver_xorg-server/xserver_xorg-server.mk
+@@ -189,7 +189,7 @@ endif
+ # they would be responsible for starting the server.
+ ifeq ($(BR2_PACKAGE_NODM)$(BR2_PACKAGE_XAPP_XDM),)
+ define XSERVER_XORG_SERVER_INSTALL_INIT_SYSV
+-	$(INSTALL) -D -m 755 package/x11r7/xserver_xorg-server/S40xorg \
++	$(INSTALL) -D -m 644 package/x11r7/xserver_xorg-server/S40xorg \
+ 		$(TARGET_DIR)/etc/init.d/S40xorg
+ endef
+ endif
+-- 
+2.46.1
+

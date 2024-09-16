@@ -1,0 +1,2305 @@
+From 06fc24ad48f1815f0a0cb420fd6cfa03f1e9c90c Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:04:41 +0200
+Subject: [PATCH 16/26] Add UM8881/6 chipset
+
+"working"
+---
+ src/northbridge/umc/um8881/Kconfig         |  17 +
+ src/northbridge/umc/um8881/Makefile.inc    |  22 +
+ src/northbridge/umc/um8881/bootblock.c     |  47 ++
+ src/northbridge/umc/um8881/memmap.c        | 183 +++++
+ src/northbridge/umc/um8881/northbridge.c   | 374 +++++++++++
+ src/northbridge/umc/um8881/postcar.c       |  12 +
+ src/northbridge/umc/um8881/raminit.c       | 743 +++++++++++++++++++++
+ src/northbridge/umc/um8881/ramstage_exit.c | 116 ++++
+ src/northbridge/umc/um8881/reg_init.c      |  29 +
+ src/northbridge/umc/um8881/reg_init.h      | 170 +++++
+ src/northbridge/umc/um8881/romstage.c      | 165 +++++
+ src/southbridge/umc/um8886/Kconfig         |   5 +
+ src/southbridge/umc/um8886/Makefile.inc    |  11 +
+ src/southbridge/umc/um8886/early_init.c    |  73 ++
+ src/southbridge/umc/um8886/ide.c           | 119 ++++
+ src/southbridge/umc/um8886/pirq.c          |  41 ++
+ src/southbridge/umc/um8886/um8886.c        |  30 +
+ 17 files changed, 2157 insertions(+)
+ create mode 100644 src/northbridge/umc/um8881/Kconfig
+ create mode 100644 src/northbridge/umc/um8881/Makefile.inc
+ create mode 100644 src/northbridge/umc/um8881/bootblock.c
+ create mode 100644 src/northbridge/umc/um8881/memmap.c
+ create mode 100644 src/northbridge/umc/um8881/northbridge.c
+ create mode 100644 src/northbridge/umc/um8881/postcar.c
+ create mode 100644 src/northbridge/umc/um8881/raminit.c
+ create mode 100644 src/northbridge/umc/um8881/ramstage_exit.c
+ create mode 100644 src/northbridge/umc/um8881/reg_init.c
+ create mode 100644 src/northbridge/umc/um8881/reg_init.h
+ create mode 100644 src/northbridge/umc/um8881/romstage.c
+ create mode 100644 src/southbridge/umc/um8886/Kconfig
+ create mode 100644 src/southbridge/umc/um8886/Makefile.inc
+ create mode 100644 src/southbridge/umc/um8886/early_init.c
+ create mode 100644 src/southbridge/umc/um8886/ide.c
+ create mode 100644 src/southbridge/umc/um8886/pirq.c
+ create mode 100644 src/southbridge/umc/um8886/um8886.c
+
+diff --git a/src/northbridge/umc/um8881/Kconfig b/src/northbridge/umc/um8881/Kconfig
+new file mode 100644
+index 0000000000..de661beb10
+--- /dev/null
++++ b/src/northbridge/umc/um8881/Kconfig
+@@ -0,0 +1,17 @@
++# SPDX-License-Identifier: GPL-2.0-only
++
++config NORTHBRIDGE_UMC_UM8881
++	bool
++	select NO_ECAM_MMCONF_SUPPORT
++# 	select HAVE_DEBUG_RAM_SETUP
++	select NO_CBFS_MCACHE
++	select NO_DDR5
++	select NO_LPDDR4
++	select NO_DDR4
++	select NO_DDR3
++	select NO_DDR2
++	select NO_SMM
++#	select GENERIC_UDELAY
++	select BOOT_DEVICE_NOT_SPI_FLASH
++	select NO_FMAP_CACHE
++	
+diff --git a/src/northbridge/umc/um8881/Makefile.inc b/src/northbridge/umc/um8881/Makefile.inc
+new file mode 100644
+index 0000000000..4cf0d03a30
+--- /dev/null
++++ b/src/northbridge/umc/um8881/Makefile.inc
+@@ -0,0 +1,22 @@
++## SPDX-License-Identifier: GPL-2.0-or-later
++
++ifeq ($(CONFIG_NORTHBRIDGE_UMC_UM8881),y)
++
++# https://doc.coreboot.org/_images/comparison_coreboot_uefi.svg
++
++bootblock-y += bootblock.c
++
++romstage-y += reg_init.c
++romstage-y += raminit.c
++romstage-y += romstage.c
++romstage-y += memmap.c
++
++#enable L1 in chipset
++postcar-y += postcar.c
++
++ramstage-y += reg_init.c
++ramstage-y += northbridge.c
++ramstage-y += ramstage_exit.c
++ramstage-y += memmap.c
++
++endif
+diff --git a/src/northbridge/umc/um8881/bootblock.c b/src/northbridge/umc/um8881/bootblock.c
+new file mode 100644
+index 0000000000..bd565a3acb
+--- /dev/null
++++ b/src/northbridge/umc/um8881/bootblock.c
+@@ -0,0 +1,47 @@
++//TODO clean, unused here
++
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <commonlib/bsd/helpers.h>	//ARRAY_SIZE
++#include <console/console.h>
++#include <arch/bootblock.h>
++#include <device/pci_ops.h>
++
++#include "reg_init.h"
++// #include <console/streams.h>	//temp
++
++void bootblock_early_northbridge_init(void)
++{
++	post_code('U');
++	post_code('M');
++	post_code('C');
++
++	//enable segment E
++	pci_update_config8(ISA_BRIDGE, IBC57_ROM_DECODE, ~0, 0x20);
++
++	//disable shadow CDE
++	pci_write_config8(HOST_BRIDGE, HB54_SHADOW_EN, 0x00);
++
++	//segment F, central off, disable caches everywhere
++	pci_update_config8(HOST_BRIDGE, HB55_SHADOW_CFG, (u8) ~(0x80 | 0x40 | 0x20 | 1), 0x00);
++
++	//bug s ISA targetem
++
++#if 0
++	//hack sata/raid
++	pci_update_config8(PCI_DEV(0, 5, 0), 0x45, (u8)~0x80, 0);
++	pci_write_config8(PCI_DEV(0, 5, 0), 0x0a, 1);
++	pci_update_config8(PCI_DEV(0, 5, 0), 0x45, ~0, 0x80);
++#endif
++
++
++#if 0
++	printk(BIOS_DEBUG, "memdump\n");
++	mem = (uint8_t *)0xffff0000;
++	for (unsigned idx=0;idx<0x100;idx++) {
++		printk(BIOS_DEBUG, "%02x ", mem[idx]);
++	}
++	printk(BIOS_DEBUG, "\n");
++#endif
++
++}
+diff --git a/src/northbridge/umc/um8881/memmap.c b/src/northbridge/umc/um8881/memmap.c
+new file mode 100644
+index 0000000000..b635d3a929
+--- /dev/null
++++ b/src/northbridge/umc/um8881/memmap.c
+@@ -0,0 +1,183 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#define __SIMPLE_DEVICE__
++
++#include <arch/romstage.h>
++#include <device/pci_ops.h>
++#include <cbmem.h>
++#include <commonlib/helpers.h>
++#include <program_loading.h>
++
++#include "reg_init.h"
++
++unsigned get_bank_size_mb(unsigned char slot);
++bool get_bank_double_sided(unsigned char slot);
++
++
++//NOTICE RAM _MUST_ be configured by now
++uintptr_t cbmem_top_chipset(void)
++{
++	//TODO debug, forced max value
++	// ram_size_mb = 128*MiB;
++
++	//load size from already configured chipset
++	u8 val;
++
++	//get RAM size register
++	val = pci_read_config8(HOST_BRIDGE, HB52_DRAM_CFG_0);
++
++	unsigned ram_size_mb = 0;
++
++	//lower region
++	if ((val & 0x07) != 0) {
++		ram_size_mb += (1 << (val & 0x07));
++	}
++
++	//upper region
++	val = val >> 4;
++
++	if ((val & 0x07) != 0) {
++		ram_size_mb += (1 << (val & 0x07));
++	}
++
++	return ram_size_mb*MiB;
++}
++
++
++//NOTICE gets physical location of slot, find bank mapping
++bool get_bank_double_sided(unsigned char slot)
++{
++	if (slot < 4) {
++		return false;
++	}
++
++	const u8 r52 = pci_read_config8(HOST_BRIDGE, HB52_DRAM_CFG_0);
++	const u8 r53 = pci_read_config8(HOST_BRIDGE, HB53_DRAM_CFG_1);
++
++	const bool swap_regions = !!(r52 & 8);
++	bool swap_banks = false;
++	bool two_banks = false;
++	bool double_sided = false;
++
++	switch (slot) {
++	case 0:
++	case 1:
++		//use upper region : lower region
++		two_banks = !!(swap_regions ? (r53 & 0x4) : (r53 & 0x1));
++		double_sided = !!(swap_regions ? (r53 & 0x8) : (r53 & 0x2));
++
++		swap_banks = !!(r53 & 0x10);	//0<->1
++		break;
++	case 2:
++	case 3:
++		two_banks = !!(swap_regions ? (r53 & 0x1) : (r53 & 0x4));
++		double_sided = !!(swap_regions ? (r53 & 0x2) : (r53 & 0x8));
++
++		swap_banks = !!(r53 & 0x20);	//2<->3
++		break;
++	default:
++		return false;
++	}
++
++	if (two_banks) {
++		return double_sided;
++	}
++
++	//single bank
++
++	switch (slot) {
++	case 0:
++	case 2:
++		if (swap_banks) {
++			//0,2 is upper
++			return false;
++		} else {
++			//0,2 is lower
++			return double_sided;
++		}
++		break;
++	case 1:
++	case 3:
++		if (swap_banks) {
++			//1,3 is lower
++			return double_sided;
++		} else {
++			//1,3 is upper
++			return false;
++		}
++		break;
++	default:
++		return false;
++	}
++
++	return false;
++}
++
++
++//NOTICE gets physical location of slot, find bank mapping
++unsigned get_bank_size_mb(unsigned char slot)
++{
++	const u8 r52 = pci_read_config8(HOST_BRIDGE, HB52_DRAM_CFG_0);
++	const u8 r53 = pci_read_config8(HOST_BRIDGE, HB53_DRAM_CFG_1);
++
++	const bool swap_regions = !!(r52 & 8);
++	bool swap_banks = false;
++	bool two_banks = false;
++
++	u8 region_size = 0;
++
++	switch (slot) {
++	case 0:
++	case 1:
++		//use upper region : lower region
++		region_size = (swap_regions ? (r52>>4) : r52) & 7;
++		two_banks = !!(swap_regions ? (r53 & 0x4) : (r53 & 0x1));
++		swap_banks = !!(r53 & 0x10);	//0<->1
++		break;
++	case 2:
++	case 3:
++		region_size = (swap_regions ? r52 : (r52>>4)) & 7;
++		two_banks = !!(swap_regions ? (r53 & 0x1) : (r53 & 0x4));
++		swap_banks = !!(r53 & 0x20);	//2<->3
++		break;
++	default:
++		return 0;
++	}
++
++	if (region_size == 0) {
++		return 0;
++	}
++
++	if (two_banks) {
++		return (1 << region_size)/2;
++	}
++
++	//single bank
++
++	switch (slot) {
++	case 0:
++	case 2:
++		if (swap_banks) {
++			//0,2 is upper
++			return 0;
++		} else {
++			//0,2 is lower
++			return 1 << region_size;
++		}
++		break;
++	case 1:
++	case 3:
++		if (swap_banks) {
++			//1,3 is lower
++			return 1 << region_size;
++		} else {
++			//1,3 is upper
++			return 0;
++		}
++		break;
++	default:
++		return 0;
++	}
++
++	return 0;
++}
+diff --git a/src/northbridge/umc/um8881/northbridge.c b/src/northbridge/umc/um8881/northbridge.c
+new file mode 100644
+index 0000000000..0bc85cc6eb
+--- /dev/null
++++ b/src/northbridge/umc/um8881/northbridge.c
+@@ -0,0 +1,374 @@
++//TODO clean
++
++
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#define __SIMPLE_DEVICE__
++
++#include <cpu/486/sp_init.h>
++#include <console/console.h>
++#include <device/pci_ops.h>
++#include <device/device.h>
++#include <device/pci.h>
++#include <device/pci_ids.h>
++#include <stdint.h>
++#include <string.h>
++#include <device/mmio.h>	//for read32p
++
++#include <cbmem.h>
++
++#include "reg_init.h"
++
++
++///////////// host bridge
++///////////// host bridge
++///////////// host bridge
++
++
++/*
++static void northbridge_init(struct device *dev)
++{
++	//NOTICE after UMC hb_init (after PCI enum))
++	printk(BIOS_INFO, "*** UMC northbridge_init\n");
++}*/
++
++static struct device_operations hb_operations = {
++	.read_resources		= pci_dev_read_resources,
++	.set_resources		= pci_dev_set_resources,
++	.enable_resources	= pci_dev_enable_resources,
++	// .acpi_fill_ssdt		= generate_cpu_entries,
++	.ops_pci		= &pci_dev_ops_pci,
++};
++
++static const struct pci_driver hb_driver __pci_driver = {
++	.ops	= &hb_operations,
++	.vendor	= PCI_VID_UMC,
++	.device	= PCI_DID_UMC_UM8881F,
++};
++
++
++///////////// domain
++///////////// domain
++///////////// domain
++
++
++/* Report the regions. */
++
++static void umc_domain_read_resources(struct device *dev)
++{
++	printk(BIOS_INFO, "***** UMC domain read resources\n");
++
++	/////TODO TODO TODO TODO cbmem_top generate from registers?
++
++
++	pci_domain_read_resources(dev);
++
++	int idx = 4;
++
++	//ISA IO disable from PCI? (VGA IO should be special)
++	//io, fixed, assigned
++	fixed_io_from_to_flags(
++		dev,
++		idx++,
++		0,
++		0x1000,
++		IORESOURCE_RESERVE
++	);
++
++
++	//low mem
++	//cacheable, stored, mem, fixed, assigned
++	ram_from_to(dev, idx++, 0, 0xa0000ULL);	//0xa0000
++
++#if 1
++	//VGA
++	//fixed, assigned, mem
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		0xa0000ULL,
++		0xc0000ULL,
++		IORESOURCE_STORED
++	);
++
++	//BIOSes
++	//fixed, assigned, mem
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		0xc0000ULL,
++		0x100000ULL,
++		IORESOURCE_RESERVE /*| IORESOURCE_READONLY*/
++		// 0 /* | IORESOURCE_RESERVE*/  /*| IORESOURCE_READONLY*/
++
++#if 0
++		IORESOURCE_CACHEABLE | IORESOURCE_STORED
++		| IORESOURCE_READONLY /*test*/
++#endif
++	);
++#endif
++
++	// printk(BIOS_INFO, "CBMEM TOP !!! 0x%p\n", cbmem_top());
++
++	//after bios to end of the RAM
++	//cacheable, stored, mem, fixed, assigned
++	ram_from_to(dev, idx++, 0x100000ULL, (unsigned long)cbmem_top());
++
++#if 0	//TODO must be NOT used
++	//possible PCI area, end of the RAM to end of the wire
++	//fixed, assigned, mem
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		(unsigned long)cbmem_top(),
++		0xfffe0000ULL,
++		IORESOURCE_RESERVE
++	);
++#endif
++
++#if 0
++	//TODO does UMC have entire 4GB space? finali has unwired address wires
++	//fixed, assigned, mem
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		0x08000000ULL,
++		0xf8000000ULL,
++		IORESOURCE_FIXED | IORESOURCE_STORED | IORESOURCE_ASSIGNED
++	);
++#endif
++
++#if 0
++	//PCI area to BOOT segment
++	//fixed, assigned, mem
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		0x08000000ULL,
++		0xfffe0000ULL,
++		IORESOURCE_RESERVE | IORESOURCE_PREFETCH
++	);
++
++#endif
++
++#if 1
++	//C/D/E/F may be accessible at the end of space
++	//don't put PCI regions there
++
++	//BOOT segment
++	//fixed, assigned, mem
++	fixed_mem_from_to_flags(
++		dev,
++		idx++,
++		0xfffc0000ULL,
++		0x100000000ULL,
++		IORESOURCE_RESERVE | IORESOURCE_STORED
++	);
++#endif
++}
++
++/*
++static void hb_init(struct device *dev)
++{
++	//NOTICE after UMC mp_init_cpus (after PCI enumeration)
++	printk(BIOS_INFO, "*** UMC hb_init\n");
++}*/
++
++
++struct device_operations um8881_pci_domain_ops = {
++	.read_resources		= umc_domain_read_resources,
++	.set_resources		= pci_domain_set_resources,
++	.scan_bus		= pci_domain_scan_bus,
++
++	// .init			= hb_init,
++// #if CONFIG(HAVE_ACPI_TABLES)
++	// .write_acpi_tables	= northbridge_write_acpi_tables,
++	// .acpi_name			= northbridge_acpi_name,
++	// .acpi_fill_ssdt   = ssdt_set_above_4g_pci,
++};
++
++///////////////////////////
++
++
++#if 0
++static void _memdump(uintptr_t ptr)
++{
++	uint8_t *mem = (uint8_t *)ptr;
++	printk(BIOS_DEBUG, "%p:\n", mem);
++	for (unsigned idx=0; idx<128; idx++) {
++		if ((idx % 16) == 0) {
++			printk(BIOS_DEBUG, "%p: ", &mem[idx]);
++		}
++		printk(BIOS_DEBUG, "%02hhx ", mem[idx]);
++		if (((idx % 16) == 15) || (idx == 127)) {
++			printk(BIOS_DEBUG, "\n");
++		}
++	}
++}
++#endif
++
++
++void mp_init_cpus(struct bus *cpu_bus)
++{
++	//NOTICE after PCI enumeration
++	printk(BIOS_INFO, "*** UMC mp_init_cpus\n");
++
++	// const struct mp_ops *ops = &mp_ops_no_smm;
++
++	//NO SMM pc2005
++	// sp_init_with_smm(cpu_bus, ops);
++
++#if 0
++	void* current_address;
++
++	// asm volatile("rdtsc" :::);
++	asm volatile(
++		"call get_eip\n\t"
++		"get_eip:\n\t"
++		"pop %%eax\n\t"
++		"movl %%eax, %0\n\t"
++		: "=r" (current_address)::"%eax"
++	);
++	printk(BIOS_INFO, "***INIT CPU EIP:%p\n", current_address);
++#endif
++
++//TODO EXPERIMENTAL
++#if 0
++	asm volatile("nop" :::);
++	asm volatile("nop" :::);
++	asm volatile("nop" :::);
++	asm volatile("nop" :::);
++	asm volatile("nop" :::);
++	asm volatile("nop" :::);
++	asm volatile("nop" :::);
++	asm volatile("nop" :::);
++	asm volatile("nop" :::);
++	asm volatile("rdtsc" :::);
++
++		//read twice L2 size
++		for (uintptr_t addr = 0x200000; addr < 0x200000 + 256*KiB*2; addr+=4) {
++			// if ((addr % 0x10000) == 0) {
++			// 	printk(BIOS_DEBUG, "%6lx ", addr);
++			// }
++
++			read32p(addr);
++			// write32p(addr, addr);
++		}
++		// printk(BIOS_DEBUG, "\n");
++#endif
++
++//disable forced L2 hit
++// pci_update_config8(HOST_BRIDGE, HB5A_MISC_0, ~0x40, 0);
++
++
++
++
++	//ramstage disable original ROM, do shadow
++
++	//TODO TODO TODO TODO TODO TODO test RAM/ROM/ISA on E/F segments
++
++	//TODO make seg E/F shadow+writeable ?
++
++	//no cacheable bios
++	pci_update_config8(HOST_BRIDGE, HB55_SHADOW_CFG, ~0x3f, 0);
++
++	//CSEG shadow
++	// printk(BIOS_INFO, "++++RAM++++ segment Call use RAM shadow\n");
++	//enable will also disable VGA (unless it's bios is copied over)
++	// pci_update_config8(HOST_BRIDGE, HB54_SHADOW_EN, ~0, 0xe);
++
++	//ESEG shadow, enable Eseg read
++	// printk(BIOS_INFO, "++++RAM++++ segment E use RAM shadow\n");
++	// pci_update_config8(HOST_BRIDGE, HB54_SHADOW_EN, ~0, 1);
++
++	//FSEG shadow + global shadow enable
++	// printk(BIOS_INFO, "++++RAM++++ segment F use RAM shadow\n");
++	// pci_update_config8(HOST_BRIDGE, HB55_SHADOW_CFG, ~0x40, 0x80);
++
++	//enable write protect
++	// pci_update_config8(HOST_BRIDGE, HB55_SHADOW_CFG, ~0, 0x40);
++
++	//disable write protect
++	pci_update_config8(HOST_BRIDGE, HB55_SHADOW_CFG, ~0x40, 0);
++
++#if 0
++	//TODO
++	//make bios cacheable
++	pci_update_config8(HOST_BRIDGE, HB55_SHADOW_CFG, ~0, 0x20);
++
++	printk(BIOS_INFO, "TODO TEMP force enable L2\n");
++	pci_update_config8(HOST_BRIDGE, HB50_L2_CFG_0, (u8)~0x87, 0x03);
++	// pci_update_config8(HOST_BRIDGE, HB5A_MISC_0, ~0, 0x4f);
++
++	for (uintptr_t addr = 0; addr < 256*KiB*2; addr+=4) {
++		if ((addr % 0x10000) == 0) {
++			printk(BIOS_DEBUG, "%6lx ", addr);
++		}
++
++		read32p(addr);
++		// write32p(addr, addr);
++	}
++	printk(BIOS_DEBUG, "\n");
++
++	pci_update_config8(HOST_BRIDGE, HB50_L2_CFG_0, ~0, 0x80);
++
++	// pci_update_config8(HOST_BRIDGE, HB5A_MISC_0, ~0x4f, 0);
++#endif
++
++
++	//void *write_tables(void)
++
++#if 0
++	printk(BIOS_DEBUG, "dump HB:\n");
++	for (unsigned idx=0x50;idx<0x63;idx++) {
++		if ((idx % 16) == 0) {
++			printk(BIOS_DEBUG, "%02x: ", idx);
++		}
++		printk(BIOS_DEBUG, "%02hhx ",
++		       pci_read_config8(HOST_BRIDGE, idx)
++		);
++		if (((idx % 16) == 15) || (idx == (0x63-1))) {
++			printk(BIOS_DEBUG, "\n");
++		}
++	}
++
++	printk(BIOS_DEBUG, "dump IBC:\n");
++	for (unsigned idx=0x40;idx<0xb0;idx++) {
++		if ((idx % 16) == 0) {
++			printk(BIOS_DEBUG, "%02x: ", idx);
++		}
++		printk(BIOS_DEBUG, "%02hhx ",
++		       pci_read_config8(ISA_BRIDGE, idx)
++		);
++		if (((idx % 16) == 15) || (idx == (0xb0-1))) {
++			printk(BIOS_DEBUG, "\n");
++		}
++	}
++#endif
++
++
++
++	//TODO make seg E F read only? (probably not yet)
++}
++
++struct device_operations um8881_cpu_bus_ops = {
++	.read_resources	= noop_read_resources,
++	.set_resources	= noop_set_resources,
++	.init		= mp_cpu_bus_init,
++};
++
++// static void enable_dev(struct device *dev)
++// {
++// 	/* Set the operations if it is a special bus type */
++// 	if (dev->path.type == DEVICE_PATH_DOMAIN) {
++// 		dev->ops = &pci_domain_ops;
++// 	}
++// 	else if (dev->path.type == DEVICE_PATH_CPU_CLUSTER) {
++// 		dev->ops = &cpu_bus_ops;
++// 	}
++// }
++
++struct chip_operations northbridge_umc_um8881_ops = {
++	CHIP_NAME("UMC UM8881 Northbridge (HB4 Super Energy Star Green)")
++	// .enable_dev = enable_dev,
++};
+diff --git a/src/northbridge/umc/um8881/postcar.c b/src/northbridge/umc/um8881/postcar.c
+new file mode 100644
+index 0000000000..324bf2afbd
+--- /dev/null
++++ b/src/northbridge/umc/um8881/postcar.c
+@@ -0,0 +1,12 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include "reg_init.h"
++
++void late_car_teardown(void);
++
++
++void late_car_teardown(void)
++{
++	//L2 must be enabled/made coherent right after getting from 0xffff0000
++	//it is too late here
++}
+diff --git a/src/northbridge/umc/um8881/raminit.c b/src/northbridge/umc/um8881/raminit.c
+new file mode 100644
+index 0000000000..393f796b54
+--- /dev/null
++++ b/src/northbridge/umc/um8881/raminit.c
+@@ -0,0 +1,743 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++
++/////// TODO 32M 10x12 double + 16M 11x11 single se spatn edetekuje
++
++#define __SIMPLE_DEVICE__
++
++#include <stdint.h>
++#include <device/mmio.h>
++#include <console/console.h>
++#include <arch/io.h>
++#include <device/pci_ops.h>
++#include <cbmem.h>
++
++#include "reg_init.h"
++
++void dram_init(void);
++void l2_cache_init(void);
++
++//////////////////
++
++//NOTICE could be chance it's stuck at this value, try more than one
++static const u32 test_patterns[] = {
++	0x12345678,
++	0x3355aacc,
++	0xf0f0f0f0,
++	0x0f0f0f0f,
++	0x87654321,
++};
++
++enum address_detect {
++	ADDR_UNIMPLEMENTED,
++	ADDR_ALIASED,
++	ADDR_ACCESSIBLE,
++};
++
++//use patterns to check if two addresses leads to the same memory or are volatile
++//NOTICE flush and disable any cache between CPU and tested location
++//destroys content
++//if both addresses matches, check only volatility
++//don't check address witch 0x10 distance
++static
++enum address_detect check_address(
++	uintptr_t valid,
++	uintptr_t tested
++)
++{
++	// printk(BIOS_INFO, "  Aliasing test: @0x%lx ? @0x%lx\n", valid, tested);
++
++	for (unsigned idx = 0; idx < ARRAY_SIZE(test_patterns); idx++) {
++		//init to known value
++		write32p(valid, 0);
++		write32p(tested, 0);
++		asm volatile ("" ::: "memory");	//memory barrier
++
++		//if we are testing alias, write inverted pattern
++		if (valid != tested) {
++			write32p(tested, ~ (test_patterns[idx]));
++			asm volatile ("" ::: "memory");	//memory barrier
++		}
++
++		//set known working address to the test pattern
++		write32p(valid, test_patterns[idx]);
++		asm volatile ("" ::: "memory");	//memory barrier
++
++		//now tested address will have either
++		//	inverted pattern -> accessible
++		//	direct pattern -> alias
++		//	different value -> unimplemented
++
++		//NOTICE NOTICE NOTICE
++		//not connected chip will leave pins floating, limit this by writing a valid value
++		//+0x10 = same octet of wires but different address
++		//0x10 also a different cacheline
++		//don't use 4, cache detection uses that
++		write32p(tested + 0x10, 0);
++		write32p(valid + 0x10, 0);
++		asm volatile ("" ::: "memory");	//memory barrier
++
++#if 0
++		printk(BIOS_DEBUG, "RB1 %08x @0x%08lx\n", read32p(tested), tested);
++		// printk(BIOS_DEBUG, "RB2 %08x\n", read32p(tested));
++		// printk(BIOS_DEBUG, "RB3 %08x\n", read32p(tested));
++		// printk(BIOS_DEBUG, "RB4 %08x\n", read32p(tested));
++
++		read32p(tested);
++		read32p(tested);
++		read32p(tested);
++		read32p(tested);
++#endif
++
++		//compare valid with pattern
++
++		if (read32p(tested) == (~ test_patterns[idx])) {
++			//not aliasing this pattern
++			//check next pattern
++
++// printk(BIOS_INFO, "  not aliasing %08x\n", read32p(tested));
++
++		} else if (read32p(tested) == test_patterns[idx]) {
++			//aliasing
++
++// printk(BIOS_INFO, "  aliasing %08x\n", read32p(tested));
++			if (valid != tested) {
++				//if different addresses, return aliased immediatelly
++				return ADDR_ALIASED;
++			}
++
++			//first check all patterns to declare accessible
++		} else {
++			//does not retain the value
++
++// printk(BIOS_INFO, "  unimplemented %08x\n", read32p(tested));
++
++			return ADDR_UNIMPLEMENTED;
++		}
++	}
++
++	return ADDR_ACCESSIBLE;
++}
++
++///////////////////////////////////
++
++struct bank_descriptor {
++	u8 cols;	//could fit 4 bits
++	u8 rows;	//could fit 4 bits
++	bool double_sided;
++};
++
++
++static
++unsigned get_bank_desc_to_size(
++	struct bank_descriptor *bank
++)
++{
++	if (bank == NULL) {
++		return 0;
++	}
++
++	if ((bank->cols == 0) || (bank->rows == 0)) {
++		return 0;
++	}
++
++	return 1UL << (bank->cols + bank->rows + 2 + (bank->double_sided?1:0));
++}
++
++//TODO ali has address 2, how to erase neighbor
++
++static const u8 columns_to_address[12] = {
++	//don't test 2 3 4 as it collides with check address algo
++	5, 5, 5, 5, 6, 7, 8, 9, 10, 23, 24, 25
++};
++
++static const u8 rows_to_address[12] = {
++	11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22
++};
++
++
++//TODO better function argument?
++static
++u8 detect_ma_bits(
++	const u8 * map
++)
++{
++	for (unsigned idx = 0; idx < 12; idx++) {
++		const unsigned addr = 1UL << map[idx];
++
++// printk(BIOS_INFO, "MA %u %hhu %x\n",idx,map[idx], addr);
++
++		if (check_address(0, addr) != ADDR_ACCESSIBLE) {
++			//MA bit (=idx) is unused, marks number of useable bits
++//
++// printk(BIOS_INFO, "  exit %u\n", idx);
++
++			return idx;
++		}
++	}
++
++	return 12;
++}
++
++
++//returns bank size and is it is double sided, NULL pointers are ignored
++static
++void detect_bank(
++	struct bank_descriptor *banks,
++	unsigned index
++)
++{
++	if (banks == NULL) {
++		return;
++	}
++
++	if (index >= 4) {
++		return;
++	}
++
++	printk(BIOS_DEBUG, "Bank %u: ", index);
++
++	banks[index].cols = 0;
++	banks[index].rows = 0;
++	banks[index].double_sided = false;
++
++	if (check_address(0, 0) != ADDR_ACCESSIBLE) {
++		//not implemented
++		printk(BIOS_DEBUG, "N/A\n");
++		return;
++	}
++
++	banks[index].cols = detect_ma_bits(columns_to_address);
++// printk(BIOS_DEBUG, "===== CCC %u\n", banks[index].cols);
++
++	banks[index].rows = detect_ma_bits(rows_to_address);
++// printk(BIOS_DEBUG, "===== RRR %u\n", banks[index].rows);
++
++	//64*MiB is implemented -> double sided
++	//64 cannot be r/w -> single sided
++
++	//NOTICE we are lazy, we are expecting other side has the same size
++
++	if (check_address(64*MiB, 64*MiB) == ADDR_ACCESSIBLE) {
++		banks[index].double_sided = true;
++	}
++
++	printk(BIOS_DEBUG, "columns %u, rows %u, %s sided, total size %u kiB\n",
++		banks[index].cols,
++		banks[index].rows,
++		banks[index].double_sided ? "double" : "single",
++		get_bank_desc_to_size(&banks[index]) / KiB
++	);
++
++	return;
++}
++
++
++//TODO change this if more configuration options is discovered
++static
++void sanitize_bank(
++	struct bank_descriptor *bank
++)
++{
++	if ((bank->cols == 10) && (bank->rows == 10)) {
++	} else if ((bank->cols == 10) && (bank->rows == 11)) {
++	} else if ((bank->cols == 10) && (bank->rows == 12)) {
++
++	} else if ((bank->cols == 11) && (bank->rows == 11)) {
++	} else if ((bank->cols == 11) && (bank->rows == 12)) {
++
++	} else if ((bank->cols == 12) && (bank->rows == 12)) {
++
++
++	} else if ((bank->cols == 0) && (bank->rows == 0)) {
++		//disabled
++	} else {
++		printk(BIOS_ERR, "%u col(s), %u row(s) unsupported\n",
++			bank->cols,
++			bank->rows
++		);
++
++		//disable
++		bank->cols = 0;
++		bank->rows = 0;
++		bank->double_sided = false;
++	}
++}
++
++
++struct region_descriptor {
++	unsigned totalsize_reg_val;
++	bool two_banks;
++	bool double_sided;
++	bool use_upper;
++	bool require_ma11;
++};
++
++
++static
++u8 bank_size_to_region_size(
++	unsigned size
++)
++{
++
++// printk(BIOS_INFO, "bank_size_to_region_size %u\n", size);
++
++	switch (size) {
++		case 2*MiB:
++			return 1;
++		case 4*MiB:
++			return 2;
++		case 8*MiB:
++			return 3;
++		case 16*MiB:
++			return 4;
++		case 32*MiB:
++			return 5;
++		case 64*MiB:
++			return 6;
++		case 128*MiB:
++			return 7;
++		default:
++			return 0;
++	}
++
++	return 0;
++}
++
++
++//unify two banks into a single region
++//also if unified region is too small, check if a single bank is better
++static
++void unify_banks_to_region(
++	struct bank_descriptor *lower,
++	struct bank_descriptor *upper,
++	struct region_descriptor *result
++)
++{
++	if (lower == NULL) {
++		return;
++	}
++	if (upper == NULL) {
++		return;
++	}
++	if (result == NULL) {
++		return;
++	}
++
++	unsigned lower_size_original = get_bank_desc_to_size(lower);
++	unsigned upper_size_original = get_bank_desc_to_size(upper);
++
++// printk(BIOS_DEBUG, "Region lbs:%u ubs:%u\n", lower_size_original, upper_size_original);
++
++
++	if ((lower_size_original + upper_size_original) == 0) {
++		// both banks are disabled
++// printk(BIOS_DEBUG, "both banks are empty\n");
++		result->totalsize_reg_val = 0;
++		result->double_sided = false;
++		result->two_banks = false;
++		result->use_upper = false;
++		result->require_ma11 = false;
++		return;
++	}
++
++	// one bank is disabled
++	if (lower_size_original == 0) {
++// printk(BIOS_DEBUG, "lower bank is empty\n");
++		result->totalsize_reg_val = bank_size_to_region_size(get_bank_desc_to_size(upper));
++		result->double_sided = upper->double_sided;
++		result->two_banks = false;
++		result->use_upper = true;
++		result->require_ma11 = (upper->rows == 12)?true:false;
++		return;
++	} else if (upper_size_original == 0) {
++// printk(BIOS_DEBUG, "upper bank is empty\n");
++		result->totalsize_reg_val = bank_size_to_region_size(get_bank_desc_to_size(lower));
++		result->double_sided = lower->double_sided;
++		result->two_banks = false;
++		result->use_upper = false;
++		result->require_ma11 = (lower->rows == 12)?true:false;
++		return;
++	}
++
++	//both are filled
++	//gets common denominator
++
++	struct bank_descriptor tmp;
++
++	tmp.cols = MIN(lower->cols, upper->cols);
++	tmp.rows = MIN(lower->rows, upper->rows);
++	tmp.double_sided = lower->double_sided && upper->double_sided;
++
++	unsigned result_size = get_bank_desc_to_size(&tmp) * 2;
++
++	if (lower_size_original > result_size) {
++// printk(BIOS_DEBUG, "lower bank is bigger than combined\n");
++
++		// LOWER is higher than the common denominator, disable UPPER
++		result->totalsize_reg_val = bank_size_to_region_size(lower_size_original);
++		result->double_sided = lower->double_sided;
++		result->two_banks = false;
++		result->use_upper = false;
++		result->require_ma11 = (lower->rows == 12)?true:false;
++	} else if (upper_size_original > result_size) {
++// printk(BIOS_DEBUG, "upper bank is bigger than combined\n");
++
++		// UPPER is higher than the common denominator, disable LOWER
++		result->totalsize_reg_val = bank_size_to_region_size(upper_size_original);
++		result->double_sided = upper->double_sided;
++		result->two_banks = false;
++		result->use_upper = true;
++		result->require_ma11 = (upper->rows == 12)?true:false;
++	} else {
++// printk(BIOS_DEBUG, "use combined banks\n");
++
++		//use common denominator
++		result->totalsize_reg_val = bank_size_to_region_size(result_size);
++		result->double_sided = tmp.double_sided;
++		result->two_banks = true;
++		result->use_upper = false;
++		result->require_ma11 = (tmp.rows == 12)?true:false;
++	}
++}
++
++
++static
++void show_dram_regions(
++	struct region_descriptor *region_base,
++	unsigned char region_idx,
++	unsigned char bank_lower,
++	unsigned char bank_upper
++)
++{
++	if (region_base == NULL)
++		return;
++	if (region_idx >= 2)
++		return;
++	if (bank_lower >= 4)
++		return;
++	if (bank_upper >= 4)
++		return;
++
++	printk(BIOS_INFO, "Region %u (banks %u+%u): ",
++		region_idx,
++		bank_lower,
++		bank_upper
++	);
++
++	struct region_descriptor * const region = &region_base[region_idx];
++
++	if (region->totalsize_reg_val == 0) {
++		printk(BIOS_INFO, "Empty\n");
++	} else {
++		printk(BIOS_INFO, "%ux %u MiB, %s sided%s%s\n",
++			region->two_banks?2:1,
++			1 << region->totalsize_reg_val,
++			region->double_sided?"double":"single",
++			region->require_ma11?", MA11":"",
++			region->use_upper?", swapped":""
++		);
++	}
++}
++
++
++///////////////////////////////////////
++///////////////// API /////////////////
++///////////////////////////////////////
++
++
++enum l2_chip_size {
++	L2_SIZE_NONE = 0,	//also failed
++	L2_SIZE_64K = 1,
++	L2_SIZE_128K = 2,
++	L2_SIZE_256K = 3,
++	L2_SIZE_512K = 4,
++	L2_SIZE_1024K = 5,
++	L2_SIZE_2048K = 6,	//or reserved TODO test it (poke L2 works with this)
++	L2_SIZE_4096K = 7,	//or reserved TODO test it (poke L2 works with this)
++};
++
++
++//NOTICE all cache configuration must be set by now (timing, WT/WB, dirty/tag)
++//NOTICE DRAM must be configured and running
++void l2_cache_init(void)
++{
++	unsigned cache_size = 0;
++
++	printk(BIOS_INFO, "UMC L2 cache init\n");
++
++	//set L2 cache to max, single bank, Wt, timing 3222 (slowest)
++	pci_update_config8(HOST_BRIDGE, HB50_L2_CFG_0,
++		~(7),
++		0x80 | L2_SIZE_1024K
++	);
++
++	//force L2 cache hit
++	pci_update_config8(HOST_BRIDGE, HB5A_MISC_0, ~0, 0x40);
++
++	if (check_address(0, 0) != ADDR_ACCESSIBLE) {
++		//L2 not installed, disable it
++		printk(BIOS_INFO, "L2 cache not installed, disabling\n");
++
++		pci_update_config8(HOST_BRIDGE, HB50_L2_CFG_0, 0, 0);
++
++		cache_size = 0;
++	} else {
++		//enable two banks to test if filled
++		pci_update_config8(HOST_BRIDGE, HB50_L2_CFG_0, ~0, 8);
++
++		if (check_address(0, 4) == ADDR_ACCESSIBLE) {
++			printk(BIOS_INFO, "Dual bank L2 cache\n");
++		} else {
++			//revert to a single bank L2
++			pci_update_config8(HOST_BRIDGE, HB50_L2_CFG_0, ~8, 0);
++
++			printk(BIOS_INFO, "Single bank L2 cache\n");
++		}
++
++		const unsigned l2_size[8] = {
++			[L2_SIZE_NONE] = 0,
++			[L2_SIZE_64K] = 64*KiB,
++			[L2_SIZE_128K] = 128*KiB,
++			[L2_SIZE_256K] = 256*KiB,
++			[L2_SIZE_512K] = 512*KiB,
++			[L2_SIZE_1024K] = 1024*KiB,
++			[L2_SIZE_2048K] = 2048*KiB,
++			[L2_SIZE_4096K] = 4096*KiB,
++		};
++
++		for (unsigned idx = L2_SIZE_64K; idx < L2_SIZE_2048K; idx++) {
++			if (check_address(0, l2_size[idx]) != ADDR_ACCESSIBLE) {
++				//if the value at the l2_size address matches address 0
++				//cache size is l2_size, value in register is index
++
++				cache_size = l2_size[idx];
++				printk(BIOS_INFO, "L2 cache size %u kiB\n", cache_size/KiB);
++
++				pci_update_config8(HOST_BRIDGE, HB50_L2_CFG_0, ~7, idx);
++				break;
++			}
++		}
++	}
++
++	//disable forced hit
++	pci_update_config8(HOST_BRIDGE, HB5A_MISC_0, ~0x40, 0);
++
++	if (cache_size > 0) {
++		//if L2 cache enabled, initialize (random poweron data)
++
++// //experimental
++// pci_update_config8(HOST_BRIDGE, HB5A_MISC_0, ~0, 0x40);
++
++		printk(BIOS_DEBUG, "Init L2 to be coherent with RAM: ");
++
++#if 0
++		//read twice L2 size
++		for (uintptr_t addr = 0x200000; addr < 0x200000 + cache_size*2; addr+=4) {
++			if ((addr % 0x10000) == 0) {
++				printk(BIOS_DEBUG, "%6lx ", addr);
++			}
++
++			read32p(addr);
++			// write32p(addr, addr);
++		}
++		printk(BIOS_DEBUG, "\n");
++#endif
++
++	}
++
++	//NOTICE INVD is run in exit_car.S
++	//NOTICE if there are stale data/code in L2 cache, after enabling there will be random crashes
++	//it seems invd will cause stale data in L2 cache to write to RAM
++}
++
++
++///////////////////////////////////////////
++
++void dram_init(void)
++{
++	printk(BIOS_INFO, "UMC DRAM init\n");
++
++	//banks need to be sorted by being occupied of SIMM module
++
++	/*
++	=======================
++	NOTICE not sure if single sided SIMMs are always using same RAS
++	-> located on the same "side"
++	*/
++
++	//disable L2
++	pci_update_config8(HOST_BRIDGE, HB50_L2_CFG_0, 0x7f, 0);
++
++	//disable L2 force hit
++	pci_update_config8(HOST_BRIDGE, HB5A_MISC_0, ~0x40, 0);
++
++	/*
++	============================
++	Detection algorithm:
++	write magic at address 0
++	write magic inversion to expected size
++	check if inversion was written to address 0
++	============================
++	Pair capacity computation algorithm:
++	NOTICE according to existing documentation it looks weirdly designed :-P
++	Both SIMMs zero -> disable
++	Lower SIMM filled -> set its capacity
++	Upper SIMM filled -> set its capacity and swap slot bit
++	Both SIMMs filled -> fun begins
++		single + single || double+double
++			Same capacity -> sum capacity
++			Different capacity -> crop the larger one
++				cropped + other > uncropped -> set summed capacity
++				cropped + other < uncropped -> disable other, redo
++		single + double || double+single -> a pair can have only one type of sides
++			halved double > single -> needs to have same sizes
++	*/
++
++	//all banks will be tested as singular module at maximum columns and rows
++	//all tests inside lower region
++	//TODO revision 4 of chipset required
++
++	//set lower region to 12x12 (2x 64 MiB - double sided)
++	pci_update_config8(HOST_BRIDGE, HB52_DRAM_CFG_0, ~0x7f, 0x07);
++
++	//set lower region to be double sided, 1 bank
++	pci_update_config8(HOST_BRIDGE, HB53_DRAM_CFG_1, ~0x3f, 0x02);
++
++	//enable assymetrical/MA11 support for detection of valid columns/rows
++	pci_update_config8(HOST_BRIDGE, HB61_EDO_CFG, ~(0), 0x10);
++
++	/*
++	===================================
++	MAxx should be mapped now this way:
++	===================================
++	pin		col	row
++	--------------------
++	MA00	2	11
++	MA01	3	12
++	MA02	4	13
++	MA03	5	14
++	MA04	6	15
++	MA05	7	16
++	MA06	8	17
++	MA07	9	18
++	MA08	10	19
++	MA09	23	20
++	MA10	24	21
++	MA11	25	22
++	*/
++
++	struct bank_descriptor banks[4];
++
++	for (unsigned idx = 0; idx < 4; idx++) {
++		const u8 hb52_or_mask[4] = {
++			0, 0, 8, 8	//lower region, upper region
++		};
++
++		const u8 hb53_or_mask[4] = {
++			0, 0x10, 0, 0x10	//always swap in lower region
++		};
++
++		pci_update_config8(HOST_BRIDGE, HB52_DRAM_CFG_0, ~8, hb52_or_mask[idx]);
++		pci_update_config8(HOST_BRIDGE, HB53_DRAM_CFG_1, ~0x30, hb53_or_mask[idx]);
++
++		//TODO maybe return just a single structure?
++		detect_bank(banks, idx);
++
++		//make sure if only sane ranges were detected (disable if not)
++		sanitize_bank(&banks[idx]);
++	}
++
++	//now banks should be detected and sanitized
++
++	//combine bank 0/1 and 2/3 to two regions
++
++	struct region_descriptor regions[2];
++
++	unify_banks_to_region(&banks[0], &banks[1], &regions[0]);
++	unify_banks_to_region(&banks[2], &banks[3], &regions[1]);
++
++	//TODO incorporate bank swap and region swap
++	show_dram_regions(regions, 0, 0, 1);
++	show_dram_regions(regions, 1, 2, 3);
++
++	//now compare which region is larger, and set registers
++
++	u8 hb52_or_mask_final = 0;
++	u8 hb53_or_mask_final = 0;
++	u8 hb61_or_mask_final = 0;
++
++	unsigned upper_idx = 1;
++	unsigned lower_idx = 0;
++
++	if (regions[1].totalsize_reg_val > regions[0].totalsize_reg_val) {
++		upper_idx = 0;
++		lower_idx = 1;
++
++		//swap regions
++		hb52_or_mask_final |= 8;
++
++		printk(BIOS_INFO, "Swap regions\n");
++	}
++
++	//U region size
++	hb52_or_mask_final |= (regions[upper_idx].totalsize_reg_val & 7) << 4;
++
++	//L region size
++	hb52_or_mask_final |= regions[lower_idx].totalsize_reg_val & 7;
++
++	pci_update_config8(HOST_BRIDGE, HB52_DRAM_CFG_0, ~0x7f, hb52_or_mask_final);
++
++	//swap banks in U region
++	hb53_or_mask_final |= regions[upper_idx].use_upper ? (1 << 5) : 0;
++
++	//swap banks in L region
++	hb53_or_mask_final |= regions[lower_idx].use_upper ? (1 << 4) : 0;
++
++	//U region single/double sided
++	hb53_or_mask_final |= regions[upper_idx].double_sided ? (1 << 3) : 0;
++
++	//U region 1/2 banks
++	hb53_or_mask_final |= regions[upper_idx].two_banks ? (1 << 2) : 0;
++
++	//L region single/double sided
++	hb53_or_mask_final |= regions[lower_idx].double_sided ? (1 << 1) : 0;
++
++	//L region 1/2 banks
++	hb53_or_mask_final |= regions[lower_idx].two_banks ? (1 << 0) : 0;
++
++	pci_update_config8(HOST_BRIDGE, HB53_DRAM_CFG_1, ~0x3f, hb53_or_mask_final);
++
++	//U region requires MA11
++	//NOTICE absolute identification
++	hb61_or_mask_final |= regions[upper_idx].require_ma11 ? (1 << 5) : 0;
++
++	//L region requires MA11
++	//NOTICE absolute identification
++	hb61_or_mask_final |= regions[lower_idx].require_ma11 ? (1 << 4) : 0;
++
++	pci_update_config8(HOST_BRIDGE, HB61_EDO_CFG, ~0x30, hb61_or_mask_final);
++
++	//TODO EDO detect?
++
++#if 0
++	//TODO set computed combination
++	//TODO temp force 4x 32MB
++	// pci_update_config8(HOST_BRIDGE, HB52_DRAM_CFG_0, ~0x7f, 0x66);
++	// pci_update_config8(HOST_BRIDGE, HB53_DRAM_CFG_1, ~0x3f, 0x0f);
++#elif 0
++	//TEMP 32MB single module
++	// pci_update_config8(HOST_BRIDGE, HB52_DRAM_CFG_0, ~0x7f, 0x05);
++	// pci_update_config8(HOST_BRIDGE, HB53_DRAM_CFG_1, ~0x3f, 0x02);
++#endif
++
++	unsigned ram_size_4m = cbmem_top_chipset()/(4*MiB);
++	if (ram_size_4m == 0) {
++		ram_size_4m = 1;
++	}
++
++	//size of RAM ?? TODO rounded!
++	pci_update_config8(ISA_BRIDGE, IBC51_MEM_SIZE, 1, (ram_size_4m & 0x7f) << 1);
++
++	printk(BIOS_DEBUG, "DRAM configured\n");
++}
+diff --git a/src/northbridge/umc/um8881/ramstage_exit.c b/src/northbridge/umc/um8881/ramstage_exit.c
+new file mode 100644
+index 0000000000..2876c8960e
+--- /dev/null
++++ b/src/northbridge/umc/um8881/ramstage_exit.c
+@@ -0,0 +1,116 @@
++//TODO clean
++
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#define __SIMPLE_DEVICE__
++
++#include <console/console.h>
++#include <device/mmio.h>
++#include <program_loading.h>
++#include <cbmem.h>
++#include <device/pci_ops.h>
++
++#include "reg_init.h"
++
++//NOTICE only in ramstage, rest is weak
++void platform_prog_run(struct prog *prog)
++{
++	//reset BIOS access to default
++
++	printk(BIOS_DEBUG, "ROM access to default\n");
++
++	//enable write protect
++	pci_update_config8(HOST_BRIDGE, HB55_SHADOW_CFG, ~0, 0x40);
++
++	///////////////////////
++
++	printk(BIOS_DEBUG, "dump HB:\n");
++	for (unsigned idx=0x50;idx<0x63;idx++) {
++		if ((idx % 16) == 0) {
++			printk(BIOS_DEBUG, "%02x: ", idx);
++		}
++		printk(BIOS_DEBUG, "%02hhx ",
++		       pci_read_config8(HOST_BRIDGE, idx)
++		);
++		if (((idx % 16) == 15) || (idx == (0x63-1))) {
++			printk(BIOS_DEBUG, "\n");
++		}
++	}
++
++	printk(BIOS_DEBUG, "dump IBC:\n");
++	for (unsigned idx=0x40;idx<0xb0;idx++) {
++		if ((idx % 16) == 0) {
++			printk(BIOS_DEBUG, "%02x: ", idx);
++		}
++		printk(BIOS_DEBUG, "%02hhx ",
++		       pci_read_config8(ISA_BRIDGE, idx)
++		);
++		if (((idx % 16) == 15) || (idx == (0xb0-1))) {
++			printk(BIOS_DEBUG, "\n");
++		}
++	}
++
++	printk(BIOS_DEBUG, "dump IDE:\n");
++	for (unsigned idx=0x40;idx<0x60;idx++) {
++		if ((idx % 16) == 0) {
++			printk(BIOS_DEBUG, "%02x: ", idx);
++		}
++		printk(BIOS_DEBUG, "%02hhx ",
++		       pci_read_config8(IDE_CONTROLLER, idx)
++		);
++		if (((idx % 16) == 15) || (idx == (0x60-1))) {
++			printk(BIOS_DEBUG, "\n");
++		}
++	}
++
++#if 0
++#define PORT_INDEX	0x108
++#define PORT_DATA	0x109
++
++	printk(BIOS_DEBUG, "dump SIO:\n");
++	for (unsigned idx=0xc0; idx<0xc3;idx++) {
++		u8 tmp;
++
++		//unlock
++		outb(0xaa, PORT_INDEX);
++
++		outb(idx, PORT_INDEX);
++		tmp = inb(PORT_DATA);
++
++		//lock
++		outb(0x55, PORT_INDEX);
++
++		printk(BIOS_DEBUG, "0x%02x: 0x%02hhx\n", idx, tmp);
++	}
++#endif
++
++	printk(BIOS_DEBUG, "E/L 0x4d0:%02hhx 0x4d1:%02hhx\n", inb(0x4d0), inb(0x4d1));
++
++	printk(BIOS_DEBUG, "PIT 0x40:%02hhx 0x41:%02hhx 0x42:%02hhx 0x43:%02hhx\n",
++	       inb(0x40), inb(0x41), inb(0x42), inb(0x43));
++
++	printk(BIOS_DEBUG, "PIC 0x20:%02hhx 0x21:%02hhx 0xa0:%02hhx 0xa1:%02hhx\n",
++	       inb(0x20), inb(0x21), inb(0xa0), inb(0xa1));
++
++	// printk(BIOS_DEBUG, "PPI 0x60:%02hhx 0x61:%02hhx 0x62:%02hhx 0x63:%02hhx\n",
++	//        inb(0x60), inb(0x61), inb(0x62), inb(0x63));
++
++	printk(BIOS_DEBUG, "0x92:%02hhx\n", inb(0x92));
++
++	// printk(BIOS_DEBUG, "0x70:%02hhx\n", inb(0x70));
++	// outb(inb(0x70) | 0x80, 0x70);
++	// printk(BIOS_DEBUG, "0x70:%02hhx\n", inb(0x70));
++
++	u32 cr0_val = 0;
++	asm volatile(
++		"movl %%cr0, %%eax\n\t"
++		"movl %%eax, %0\n\t"
++		: "=r" (cr0_val)::"%eax"
++	);
++	printk(BIOS_DEBUG, "CR0:%08x\n", cr0_val);
++
++	// printk(BIOS_DEBUG, "50:%02hhx 5a:%02hhx\n",
++	//        pci_read_config8(HOST_BRIDGE, HB50_L2_CFG_0),
++	//        pci_read_config8(HOST_BRIDGE, HB5A_MISC_0)
++	// );
++}
+diff --git a/src/northbridge/umc/um8881/reg_init.c b/src/northbridge/umc/um8881/reg_init.c
+new file mode 100644
+index 0000000000..d952dbe577
+--- /dev/null
++++ b/src/northbridge/umc/um8881/reg_init.c
+@@ -0,0 +1,29 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#define __SIMPLE_DEVICE__
++
++#include <device/pci_ops.h>
++#include <console/console.h>	//printk
++
++#include "reg_init.h"
++
++///////////
++
++void umc_registers_init(
++	pci_devfn_t dev,
++	const struct umc_cfg_entry * reg_table,
++	unsigned count
++)
++{
++	for (unsigned idx = 0; idx < count; idx++) {
++
++// printk(BIOS_DEBUG, "reg 0x%02hhx\n", reg_table[idx].reg);
++
++		pci_update_config8(
++			dev,
++			reg_table[idx].reg,
++			~ reg_table[idx].clear,
++			reg_table[idx].set
++		);
++	}
++}
+diff --git a/src/northbridge/umc/um8881/reg_init.h b/src/northbridge/umc/um8881/reg_init.h
+new file mode 100644
+index 0000000000..3cafb81da5
+--- /dev/null
++++ b/src/northbridge/umc/um8881/reg_init.h
+@@ -0,0 +1,170 @@
++/*
++#################### HB HB HB HB HB HB HB HB HB HB ####################
++00:10.0 Host bridge [0600]: United Microelectronics [UMC] UM8881F [1060:8881] (rev 04)
++
++00: 60 10 81 88 06 00 00 22 04 00 00 06 00 00 00 00
++... (all zeroes)
++50: fb a4 e6 8f 03 c1 ff 0f ff 0f 0d 2c e0 30 00 ff
++60: 00 f4 01
++
++alt
++50: db a5 e6 cf 03 c1 ff 0f ff 0f 0d 2c e0 30 00 ff
++60: 02 f4 01
++
++---- after reset
++00: 60 10 81 88 06 00 00 02 04 00 00 06 00 00 00 00
++... (all zeroes)
++50: 00 00 01 00 00 40 ff 0f ff 0f 00 00 00 0f 00 ff
++60: 00 00 00
++
++
++#################### ISA ISA ISA ISA ISA ISA ISA ISA ####################
++00:12.0 ISA bridge [0601]: United Microelectronics [UMC] UM8886A [1060:886a] (rev 0d)
++
++00: 60 10 6a 88 0f 00 00 02 0d 00 01 06 00 00 80 00
++... (all zeroes)
++40: 04 42 08 9a cc 00 14 74 00 00 00 00 00 00 00 00
++50: 81 41 00 00 00 00 01 30 00 00 00 00 00 00 00 00
++60: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
++70: 6f ff 01 00 00 00 00 00 00 00 00 00 00 00 00 00
++80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
++90: 02 00 1f 00 00 00 00 00 00 00 00 00 00 00 00 00
++a0: 00 80 00 00 81 00 00 ef 28 00 00 00 00 00 00 00
++
++------after power on
++00: 60 10 6a 88 0f 00 00 02 0d 00 01 06 00 00 80 00
++... (all zeroes)
++40: 01 04 08 9a bc 00 10 30 00 00 00 00 00 00 00 00
++50: 00 02
++... (rest is zeroes)
++
++
++#################### IDE IDE IDE IDE IDE IDE IDE IDE ####################
++00:12.1 IDE interface [0101]: United Microelectronics [UMC] UM8886BF [1060:673a] (rev 0d) (prog-if 00 [ISA Compatibility mode-only controller])
++
++00: 60 10 3a 67 05 00 00 00 0d 00 01 01 00 00 80 00
++... (all zeroes)
++30: 00 00 00 00 00 00 00 00 00 00 00 00 0e 00 00 00
++
++40: 00 8d 33 3f 26 66 0b bb 55 55 55 55 88 88 aa aa
++... (all zeroes)
++
++==============
++init values
++00: 60 10 3a 67 04 00 00 00 0d 00 01 01 00 00 80 00
++... (all zeroes)
++40: 00 c0 30 aa 88 88 aa aa 88 88 aa aa 88 88 aa aa
++...rest is zeroes
++
++==================
++
++
+++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
++10c12r32m2e slot differences 1x simm
++HB50=fb
++HB51=a4
++HB52=85 simm1, 85 simm2, 8d simm3, 8d simm4
++HB53=82 simm1, 92 simm2, 82 simm3, 92 simm4
++HB61=f4
++IBC51=11 ( (VAL>>1) * 4M)
++IBCA7=0f (simm1, 8f (simm4) (false hit probably)
++
++11c11r16m1f 1x simm
++HB52=84 simm1, 84 simm2, 8c simm3, 8c simm4
++HB53=80 simm1, 90 simm2, 80 simm3, 90 simm4
++HB61=c4
++
++*/
++
++#ifndef NORTHBRIDGE_UMC_UM8881_REG_INIT_H
++#define NORTHBRIDGE_UMC_UM8881_REG_INIT_H
++
++#include <types.h>
++#include <device/pci_type.h>
++
++#define HOST_BRIDGE		PCI_DEV(0, 0x10, 0)
++#define ISA_BRIDGE		PCI_DEV(0, 0x12, 0)
++#define IDE_CONTROLLER		PCI_DEV(0, 0x12, 1)
++
++////// Host Bridge
++
++#define HB50_L2_CFG_0		0x50
++#define HB51_L2_CFG_1		0x51
++#define HB52_DRAM_CFG_0		0x52
++#define HB53_DRAM_CFG_1		0x53
++#define HB54_SHADOW_EN		0x54
++#define HB55_SHADOW_CFG		0x55
++#define HB56_MEMHOLE_BASE	0x56
++#define HB57_MEMHOLE_SIZE	0x57
++#define HB58_UNKNOWN_0		0x58
++#define HB59_UNKNOWN_1		0x59
++#define HB5A_MISC_0		0x5a
++//5B unknown
++#define HB5C_SMRAM_0		0x5c
++#define HB5D_SMRAM_1_DRAM_CFG_2	0x5d
++//5E unknown
++//5F unknown
++#define HB60_SMRAM_2		0x60
++#define HB61_EDO_CFG		0x61
++#define HB62_BURST		0x62
++
++///////// IBC
++
++#define IBC40_CFG_0		0x40
++#define IBC41_CFG_1		0x41
++//IBC42 unknown
++#define IBC43_INTAB_IRQ		0x43
++#define IBC44_INTCD_IRQ		0x44
++#define IBC45_CFG_2		0x45
++#define IBC46_INT_EN		0x46
++#define IBC47_INT_LEVEL		0x47
++//48-4f
++#define IBC50_PCI_VIDEO		0x50
++#define IBC51_MEM_SIZE		0x51
++//52-55
++#define IBC56_CLOCK		0x56
++#define IBC57_ROM_DECODE	0x57
++//58-6f
++#define IBC70_MONITOR_0		0x70
++#define IBC71_MONITOR_1		0x71
++#define IBC72_MONITOR_2		0x72
++#define IBC73_MONITOR_3		0x73
++#define IBC74_MONITOR_4		0x74
++//75
++#define IBC76_SMI_CFG		0x76
++//77-81
++#define IBC82_CFG_3		0x82
++//83-8f
++#define IBC90_WAKEUP_0		0x90
++#define IBC91_WAKEUP_1		0x91
++//92-9f
++#define IBCA0_CFG_4		0xa0
++#define IBCA1_CFG_5		0xa1
++#define IBCA2_SMM_EVENT		0xa2
++//a3
++#define IBCA4_CLOCK_RATIO	0xa4
++//a5-a6
++#define IBCA7_UNKNOWN_0		0xa7
++#define IBCA8_CFG_6		0xa8
++
++///////// IDE
++
++// #define IDE41_ENABLE		0x41
++
++
++///////////////////////
++
++struct umc_cfg_entry {
++	u8 reg;		//register index
++	u8 clear;	//which bits to clear (00010010 -> xxx0xx0x)
++	u8 set;		//which bits to set (00000010 -> xxxxxx1x)
++	//NOTICE first clear, then set
++};
++
++void umc_registers_init(
++	pci_devfn_t dev,
++	const struct umc_cfg_entry * reg_table,
++	unsigned count
++);
++
++#endif /* NORTHBRIDGE_UMC_UM8881_REG_INIT_H */
+diff --git a/src/northbridge/umc/um8881/romstage.c b/src/northbridge/umc/um8881/romstage.c
+new file mode 100644
+index 0000000000..fc091da7f6
+--- /dev/null
++++ b/src/northbridge/umc/um8881/romstage.c
+@@ -0,0 +1,165 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#define __SIMPLE_DEVICE__
++
++#include <console/console.h>
++#include <arch/romstage.h>
++#include <cbmem.h>
++#include <device/mmio.h>
++#include <device/pci_ops.h>
++#include <string.h>	//for memcpy
++
++#include "reg_init.h"
++
++
++static const struct umc_cfg_entry hb_init_table[] = {
++	//2111
++	//NOTICE wriback must be enabled at exit_car after filling
++	{HB50_L2_CFG_0,			0x40 | 0x30,	0x30},
++
++	//TODO TEST one freezes benches
++	{HB51_L2_CFG_1,			0xff,	0xa4 | 0xc0 /*| 0x30*/},
++
++	// {HB52_DRAM_CFG_0,		0,	0xe6},
++	// {HB53_DRAM_CFG_1,		0,	0x8f},
++	{HB52_DRAM_CFG_0,		0x00,	0x80},
++	{HB53_DRAM_CFG_1,		0x00,	0x80 | 0x40},
++
++	{HB54_SHADOW_EN,		0xff,	0x00},
++	{HB55_SHADOW_CFG,		0xff,	0x40},	//readonly
++	{HB56_MEMHOLE_BASE,		0xff,	0xff},
++	{HB57_MEMHOLE_SIZE,		0xff,	0x0f},
++	{HB58_UNKNOWN_0,		0xff,	0xff},
++	{HB59_UNKNOWN_1,		0xff,	0x0f},
++	{HB5A_MISC_0,			0xff,	0x0d},
++	//5b unknown
++	{HB5C_SMRAM_0,			0xff,	0xe0},
++	{HB5D_SMRAM_1_DRAM_CFG_2,	0xff,	0x30},
++	//5e-5f unknown, implemented
++	{HB60_SMRAM_2,			0xff,	0x00},
++
++	//TODO TEST one freezes benches
++	{HB61_EDO_CFG,			0xff,	0xc4 /*| 0x8*/},	//EDO 3-1-1-1
++	{HB62_BURST,			0xff,	0x01},
++};
++
++
++void dram_init(void);
++void l2_cache_init(void);
++void um8886_early_init(void);
++
++
++void mainboard_romstage_entry(void)
++{
++	printk(BIOS_DEBUG, "mainboard romstage\n");
++
++	//init HB registers
++	umc_registers_init(
++		HOST_BRIDGE,
++		hb_init_table,
++		ARRAY_SIZE(hb_init_table)
++	);
++	//TODO make some configurable from CMOS
++
++	//detect dram, L2 disabled (no interference)
++	dram_init();
++
++	//L2 cache initialization
++	l2_cache_init();
++
++	//NOTICE L2 is configured and enabled now
++
++	// asm volatile("rdtsc" :::);
++
++	printk(BIOS_INFO, "RAM size %lu kiB\n", cbmem_top_chipset()/KiB);
++
++	um8886_early_init();
++
++/*
++	printk(BIOS_DEBUG, "Erase high RAM\n");
++	for (uintptr_t addr = 128*MiB - 1*MiB; addr < 128*MiB; addr+=4) {
++		if ((addr % 0x10000) == 0)
++			printk(BIOS_DEBUG, "[%08lx]\n",addr);
++		write32p(addr, 0);
++	}
++*/
++
++	//move raminit to bootblock?
++
++	//disable write protect
++	pci_update_config8(HOST_BRIDGE, HB55_SHADOW_CFG, ~0x40, 0);
++
++	//copy ROME to shadowE
++	printk(BIOS_INFO, "TODO? fill shadow E\n");
++	//NOTICE when disabled, L2 will cause crashes ... may interference with L2 fill in a good way
++	memcpy((void*)0xe0000, (void*)0xfffe0000, 0x10000);
++
++	//copy ROMF to shadowF
++	printk(BIOS_INFO, "TODO? fill shadow F\n");
++	// memcpy((void*)0xf0000, (void*)0xffff0000, 0x10000);
++
++	//CSEG shadow
++	printk(BIOS_INFO, "++++ROM++++ segment C use RAM shadow\n");
++	pci_update_config8(HOST_BRIDGE, HB54_SHADOW_EN, ~0, 0xe);
++
++	//DSEG shadow
++	printk(BIOS_INFO, "++++ROM++++ segment D use RAM shadow\n");
++	pci_update_config8(HOST_BRIDGE, HB54_SHADOW_EN, ~0, 0xf0);
++
++	//segE shadow read
++	printk(BIOS_INFO, "++++ROM++++ segment E use RAM shadow\n");
++	pci_update_config8(HOST_BRIDGE, HB54_SHADOW_EN, ~0, 1);
++
++	//global + segF shadow read
++	printk(BIOS_INFO, "++++ROM++++ segment F use RAM shadow\n");
++	pci_update_config8(HOST_BRIDGE, HB55_SHADOW_CFG, ~0, 0x80);
++
++
++	//cmos_get_uint_option
++
++	//NOTICE NOTICE NOTICE NOTICE experiments
++	//set if pci video bios installed?
++	printk(BIOS_INFO, "Set if PCI VGA is used\n");
++	pci_update_config8(ISA_BRIDGE, IBC50_PCI_VIDEO, ~0, 0x80);
++
++	pci_update_config8(ISA_BRIDGE, IBC50_PCI_VIDEO, ~0, 1);
++
++	pci_update_config8(ISA_BRIDGE, IBC51_MEM_SIZE, ~0, 1);
++	//NOTICE NOTICE NOTICE NOTICE experiments
++
++
++#if 0
++	printk(BIOS_DEBUG, "dump HB:\n");
++	for (unsigned idx=0x50;idx<0x63;idx++) {
++		if ((idx % 16) == 0) {
++			printk(BIOS_DEBUG, "%02x: ", idx);
++		}
++		printk(BIOS_DEBUG, "%02hhx ",
++		       pci_read_config8(HOST_BRIDGE, idx)
++		);
++		if (((idx % 16) == 15) || (idx == (0x63-1))) {
++			printk(BIOS_DEBUG, "\n");
++		}
++	}
++
++	printk(BIOS_DEBUG, "dump IBC:\n");
++	for (unsigned idx=0x40;idx<0xb0;idx++) {
++		if ((idx % 16) == 0) {
++			printk(BIOS_DEBUG, "%02x: ", idx);
++		}
++		printk(BIOS_DEBUG, "%02hhx ",
++		       pci_read_config8(ISA_BRIDGE, idx)
++		);
++		if (((idx % 16) == 15) || (idx == (0xb0-1))) {
++			printk(BIOS_DEBUG, "\n");
++		}
++	}
++#endif
++
++
++// printk(BIOS_DEBUG, "cbmem_initialize {\n");
++
++	cbmem_initialize_empty();
++
++	printk(BIOS_DEBUG, "UMC HB romstage exit\n");
++}
+diff --git a/src/southbridge/umc/um8886/Kconfig b/src/southbridge/umc/um8886/Kconfig
+new file mode 100644
+index 0000000000..93f11d6d32
+--- /dev/null
++++ b/src/southbridge/umc/um8886/Kconfig
+@@ -0,0 +1,5 @@
++# SPDX-License-Identifier: GPL-2.0-only
++
++config SOUTHBRIDGE_UMC_UM8886
++	bool
++	select BOOT_DEVICE_NOT_SPI_FLASH
+diff --git a/src/southbridge/umc/um8886/Makefile.inc b/src/southbridge/umc/um8886/Makefile.inc
+new file mode 100644
+index 0000000000..9617b0345c
+--- /dev/null
++++ b/src/southbridge/umc/um8886/Makefile.inc
+@@ -0,0 +1,11 @@
++## SPDX-License-Identifier: GPL-2.0-or-later
++
++ifeq ($(CONFIG_SOUTHBRIDGE_UMC_UM8886),y)
++
++romstage-y += early_init.c
++
++ramstage-y += ide.c
++ramstage-y += um8886.c
++ramstage-$(CONFIG_GENERATE_PIRQ_TABLE) += pirq.c
++
++endif
+diff --git a/src/southbridge/umc/um8886/early_init.c b/src/southbridge/umc/um8886/early_init.c
+new file mode 100644
+index 0000000000..7072949b5b
+--- /dev/null
++++ b/src/southbridge/umc/um8886/early_init.c
+@@ -0,0 +1,73 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <arch/io.h>
++#include <device/pci_ops.h>
++#include <device/device.h>
++#include <device/pci.h>
++#include <console/console.h>
++
++#include <northbridge/umc/um8881/reg_init.h>
++
++void um8886_early_init(void);
++
++
++static const struct umc_cfg_entry ibc_init_table[] = {
++	{0x04,			0xff,	0x0f},	//enable IO MEM BM SPEC
++
++	{IBC40_CFG_0,		0xff,	0x04},
++	{IBC41_CFG_1,		0xff,	0x42},
++	{0x42,			0xff,	0x08},
++	{IBC43_INTAB_IRQ,	0xff,	0xff},
++	{IBC44_INTCD_IRQ,	0xff,	0xff},
++	{IBC45_CFG_2,		0xff,	0x04},	//TODO not set in vanilla with PS/2
++
++
++	//ps/2 mouse enabled
++	{IBC45_CFG_2,		0x01,	0x01},
++	{IBC40_CFG_0,		0x10,	0x10},
++
++
++	{IBC46_INT_EN,		0xff,	0x10 | 0xf},
++	// {IBC46_INT_EN,		0xff,	0x10},	//INTx disable TODO TODO TODO TODO
++
++
++	{IBC47_INT_LEVEL,	0xff,	0x7f},	//0xf pci is level triggered
++
++	//IBC50_PCI_VIDEO
++	// {IBC51_MEM_SIZE,	0xff,	0x40},	//set bit 1 after filling segment E/F
++	{IBC56_CLOCK,		0xff,	0x01},
++	{IBC57_ROM_DECODE,	0xff,	0x30},
++
++	{IBC70_MONITOR_0,	0xff,	0x6f},
++	{IBC71_MONITOR_1,	0xff,	0xff},
++	{IBC72_MONITOR_2,	0xff,	0x01},
++
++	{IBC90_WAKEUP_0,	0xff,	0x02},
++	{IBC91_WAKEUP_1,	0xff,	0x00},
++	{0x92,			0xff,	0x1f},
++
++	{IBCA0_CFG_4,		0xff,	0x00},
++	{IBCA1_CFG_5,		0xff,	0x80},
++	{IBCA2_SMM_EVENT,	0xff,	0x00},
++	{0xa3,			0xff,	0x00},
++	{IBCA4_CLOCK_RATIO,	0xff,	0x81},
++	{0xa5,			0xff,	0x00},
++	{0xa6,			0xff,	0x00},
++	{IBCA7_UNKNOWN_0,	0xff,	0xef},
++	{IBCA8_CFG_6,		0xff,	0x28},
++};
++
++
++void um8886_early_init(void)
++{
++	//NOTICE before switching to ramstage
++	printk(BIOS_DEBUG, "UMC IBC early init\n");
++
++	//init IBC registers
++	umc_registers_init(
++		ISA_BRIDGE,
++		ibc_init_table,
++		ARRAY_SIZE(ibc_init_table)
++	);
++	//TODO make some configurable from CMOS
++}
+diff --git a/src/southbridge/umc/um8886/ide.c b/src/southbridge/umc/um8886/ide.c
+new file mode 100644
+index 0000000000..bdff26f6ef
+--- /dev/null
++++ b/src/southbridge/umc/um8886/ide.c
+@@ -0,0 +1,119 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#define __SIMPLE_DEVICE__
++
++#include <console/console.h>
++#include <arch/io.h>
++#include <stdbool.h>
++#include <device/pci_ops.h>
++#include <device/pci.h>
++#include <device/pci_ids.h>
++
++#include <northbridge/umc/um8881/reg_init.h>
++
++
++#define TA_PIO0		3
++#define TA_PIO1		2
++#define TA_PIO2		1
++#define TA_PIO3		0
++#define TA_PIO4		0
++
++#define TB_PIO0		6
++#define TB_PIO1		5
++#define TB_PIO2		4
++#define TB_PIO3		3
++#define TB_PIO4		2
++
++#define TC_PIO0		0xb
++#define TC_PIO1		8
++#define TC_PIO2		5
++#define TC_PIO3		1
++#define TC_PIO4		0
++
++
++#define TIMING_A(pm, ps, sm, ss) (	\
++	((pm & 0x3) << 6) |		\
++	((ps & 0x3) << 4) |		\
++	((sm & 0x3) << 2) |		\
++	((ss & 0x3) << 0) )
++
++#define TIMING_B(master, slave) (	\
++	((master & 0xf) << 4) |		\
++	((slave & 0xf) << 0) )
++
++#define TIMING_C(master, slave) (	\
++	((master & 0xf) << 4) |		\
++	((slave & 0xf) << 0) )
++
++
++static const struct umc_cfg_entry ide_table[] = {
++	{0x04, 0xff, 0x01 | 4},	//enable PCI comm
++	//funguje i pro =5
++	// {0x04, 0xff, 0x0f},	//enable PCI comm
++
++	{0x40, 0xff, 0x00},
++	//primary and secondary TODO check if sec IO disappear in linux
++	{0x41, 0xff, 0x80 /*| 0x40*/ | 0xd},
++	{0x42, 0xff, 0x33},
++
++	//NOTICE this won't boot .. check!!!!
++	//dual drives?
++
++	//timing A primary (master, slave) + secondary (master, slave)
++	{0x43, 0xff, TIMING_A(TA_PIO4, TA_PIO4, TA_PIO4, TA_PIO4)},
++
++	//timing B primary (master, slave)
++	{0x44, 0xff, TIMING_B(TB_PIO4, TB_PIO4)},
++	//timing B secondary
++	{0x45, 0xff, TIMING_B(TB_PIO4, TB_PIO4)},
++
++	//timing C primary
++	{0x46, 0xff, TIMING_C(TC_PIO4, TC_PIO4)},
++	//timing C secondary
++	{0x47, 0xff, TIMING_C(TC_PIO4, TC_PIO4)},
++
++	//unknown, but set
++	{0x48, 0xff, 0x55},
++	{0x49, 0xff, 0x55},
++	{0x4a, 0xff, 0x55},
++	{0x4b, 0xff, 0x55},
++	{0x4c, 0xff, 0x88},
++	{0x4d, 0xff, 0x88},
++	{0x4e, 0xff, 0xaa},
++	{0x4f, 0xff, 0xaa},
++
++#if 0
++	//disable PCI
++	{0x04, 0x00, 0x00},
++	//disable IDE
++	{0x41, 0x00, 0x0d},
++#endif
++};
++
++
++static void ide_init(struct device *dev	)
++{
++	//NOTICE after enumeration
++	printk(BIOS_DEBUG, "**enable IDE\n");
++
++	umc_registers_init(IDE_CONTROLLER, ide_table, ARRAY_SIZE(ide_table));
++}
++
++
++static struct device_operations ide_ops = {
++	.read_resources		= pci_dev_read_resources,
++	.set_resources		= pci_dev_set_resources,
++	.enable_resources	= pci_dev_enable_resources,
++	.init			= ide_init,
++
++	//TODO if requires special enable sequence
++	// .enable			= enable_dev,
++	.ops_pci		= &pci_dev_ops_pci,
++};
++
++
++static const struct pci_driver um8886bf_ide __pci_driver = {
++	.ops	= &ide_ops,
++	.vendor	= PCI_VID_UMC,
++	.device	= PCI_DID_UMC_UM8886BF,
++};
+diff --git a/src/southbridge/umc/um8886/pirq.c b/src/southbridge/umc/um8886/pirq.c
+new file mode 100644
+index 0000000000..a42b842c46
+--- /dev/null
++++ b/src/southbridge/umc/um8886/pirq.c
+@@ -0,0 +1,41 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include <arch/pirq_routing.h>
++#include <console/console.h>
++#include <device/pci.h>
++#include <device/pci_ids.h>
++
++#include <northbridge/umc/um8881/reg_init.h>
++
++//route[] index is INTA/B/C/D, route[] value is IRQ
++#if CONFIG(PIRQ_ROUTE) && CONFIG(GENERATE_PIRQ_TABLE)
++void pirq_assign_irqs(const unsigned char route[CONFIG_MAX_PIRQ_LINKS])
++{
++	//TODO CONFIG_MAX_PIRQ_LINKS != 4 ?
++
++	// printk(BIOS_DEBUG, "PIRQ assign R[0]=%x\n", route[0]);
++	// printk(BIOS_DEBUG, "PIRQ assign R[1]=%x\n", route[1]);
++	// printk(BIOS_DEBUG, "PIRQ assign R[2]=%x\n", route[2]);
++	// printk(BIOS_DEBUG, "PIRQ assign R[3]=%x\n", route[3]);
++
++	struct device * const  pdev = dev_find_device(
++		PCI_VID_UMC, PCI_DID_UMC_UM8886A, 0
++	);
++	if (!pdev) {
++		printk(BIOS_ERR, "UMC IBC not found, cannot assign PIRQ!\n");
++		return;
++	}
++
++	pci_write_config8(
++		pdev,
++		IBC43_INTAB_IRQ,
++		((route[0] & 0xf) << 4) | (route[1] & 0xf)
++	);
++
++	pci_write_config8(
++		pdev,
++		IBC44_INTCD_IRQ,
++		((route[2] & 0xf) << 4) | (route[3] & 0xf)
++	);
++}
++#endif
+diff --git a/src/southbridge/umc/um8886/um8886.c b/src/southbridge/umc/um8886/um8886.c
+new file mode 100644
+index 0000000000..5866170a67
+--- /dev/null
++++ b/src/southbridge/umc/um8886/um8886.c
+@@ -0,0 +1,30 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <arch/io.h>
++#include <device/pci_ops.h>
++#include <device/device.h>
++#include <device/pci.h>
++#include <console/console.h>
++#include <pc80/isa-dma.h>
++#include <pc80/i8259.h>
++
++#include <northbridge/umc/um8881/reg_init.h>
++
++static void um8886_init(void *chip_info)
++{
++	//NOTICE right after ramstage
++	printk(BIOS_DEBUG, "UMC IBC init, TODO\n");
++	//TODO which can be left to seabios?
++	isa_dma_init();
++	setup_i8259();
++	i8259_configure_irq_trigger(9, 1);
++}
++
++
++struct chip_operations southbridge_umc_um8886_ops = {
++	CHIP_NAME("UMC 8886BF IBC (southbridge)")
++
++	//TODO if requires special enable sequence
++	// .enable_dev	= enable_dev,
++	.init		= um8886_init,
++};
+-- 
+2.46.1
+

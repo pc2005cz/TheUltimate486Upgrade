@@ -1,0 +1,428 @@
+From bca01f7890513b0712b24704050cea7c5e85824b Mon Sep 17 00:00:00 2001
+From: Petr Cvek <petrcvekcz@gmail.com>
+Date: Thu, 19 Sep 2024 05:06:26 +0200
+Subject: [PATCH 18/26] Add ABit AB-PB4 motherboard support
+
+---
+ src/mainboard/abit/Kconfig               | 15 ++++
+ src/mainboard/abit/Kconfig.name          |  2 +
+ src/mainboard/abit/ab-pb4/Kconfig        | 27 +++++++
+ src/mainboard/abit/ab-pb4/Kconfig.name   |  4 +
+ src/mainboard/abit/ab-pb4/Makefile.inc   |  4 +
+ src/mainboard/abit/ab-pb4/board_info.txt |  8 ++
+ src/mainboard/abit/ab-pb4/bootblock.c    | 12 +++
+ src/mainboard/abit/ab-pb4/cmos.layout    | 31 ++++++++
+ src/mainboard/abit/ab-pb4/config_seabios | 98 ++++++++++++++++++++++++
+ src/mainboard/abit/ab-pb4/devicetree.cb  | 22 ++++++
+ src/mainboard/abit/ab-pb4/irq_tables.c   | 65 ++++++++++++++++
+ src/mainboard/abit/ab-pb4/mainboard.c    | 20 +++++
+ src/mainboard/abit/ab-pb4/romstage.c     |  5 ++
+ 13 files changed, 313 insertions(+)
+ create mode 100644 src/mainboard/abit/Kconfig
+ create mode 100644 src/mainboard/abit/Kconfig.name
+ create mode 100644 src/mainboard/abit/ab-pb4/Kconfig
+ create mode 100644 src/mainboard/abit/ab-pb4/Kconfig.name
+ create mode 100644 src/mainboard/abit/ab-pb4/Makefile.inc
+ create mode 100644 src/mainboard/abit/ab-pb4/board_info.txt
+ create mode 100644 src/mainboard/abit/ab-pb4/bootblock.c
+ create mode 100644 src/mainboard/abit/ab-pb4/cmos.layout
+ create mode 100644 src/mainboard/abit/ab-pb4/config_seabios
+ create mode 100644 src/mainboard/abit/ab-pb4/devicetree.cb
+ create mode 100644 src/mainboard/abit/ab-pb4/irq_tables.c
+ create mode 100644 src/mainboard/abit/ab-pb4/mainboard.c
+ create mode 100644 src/mainboard/abit/ab-pb4/romstage.c
+
+diff --git a/src/mainboard/abit/Kconfig b/src/mainboard/abit/Kconfig
+new file mode 100644
+index 0000000000..e1ea0ff82f
+--- /dev/null
++++ b/src/mainboard/abit/Kconfig
+@@ -0,0 +1,15 @@
++if VENDOR_ABIT
++
++choice
++	prompt "Mainboard model"
++
++source "src/mainboard/abit/*/Kconfig.name"
++
++endchoice
++
++source "src/mainboard/abit/*/Kconfig"
++
++config MAINBOARD_VENDOR
++	default "ABit"
++
++endif # VENDOR_ABIT
+diff --git a/src/mainboard/abit/Kconfig.name b/src/mainboard/abit/Kconfig.name
+new file mode 100644
+index 0000000000..7986e353ca
+--- /dev/null
++++ b/src/mainboard/abit/Kconfig.name
+@@ -0,0 +1,2 @@
++config VENDOR_ABIT
++	bool "ABit"
+diff --git a/src/mainboard/abit/ab-pb4/Kconfig b/src/mainboard/abit/ab-pb4/Kconfig
+new file mode 100644
+index 0000000000..c45d2a7043
+--- /dev/null
++++ b/src/mainboard/abit/ab-pb4/Kconfig
+@@ -0,0 +1,27 @@
++if BOARD_ABIT_AB_PB4
++
++config BOARD_SPECIFIC_OPTIONS
++	def_bool y
++	select CPU_486
++	select BOARD_ROMSIZE_KB_128
++	select MISSING_BOARD_RESET
++	select NORTHBRIDGE_ALI_M1489
++	select SOUTHBRIDGE_ALI_M1487
++	select SUPERIO_WINBOND_W83787IF
++	select HAVE_OPTION_TABLE
++#	 select HAVE_CMOS_DEFAULT
++	select HAVE_PIRQ_TABLE
++	select NO_MONOTONIC_TIMER
++
++config MAINBOARD_DIR
++	default "abit/ab-pb4"
++
++config MAINBOARD_PART_NUMBER
++	default "AB-PB4"
++
++config IRQ_SLOT_COUNT
++	int
++	default 3
++#TODO 4
++
++endif #BOARD_ABIT_AB_PB4
+diff --git a/src/mainboard/abit/ab-pb4/Kconfig.name b/src/mainboard/abit/ab-pb4/Kconfig.name
+new file mode 100644
+index 0000000000..e23d90e8ad
+--- /dev/null
++++ b/src/mainboard/abit/ab-pb4/Kconfig.name
+@@ -0,0 +1,4 @@
++config BOARD_ABIT_AB_PB4
++	bool "ABit AB-PB4"
++	help
++	  experimental
+diff --git a/src/mainboard/abit/ab-pb4/Makefile.inc b/src/mainboard/abit/ab-pb4/Makefile.inc
+new file mode 100644
+index 0000000000..fce0f903c8
+--- /dev/null
++++ b/src/mainboard/abit/ab-pb4/Makefile.inc
+@@ -0,0 +1,4 @@
++bootblock-y += bootblock.c
++romstage-y += romstage.c
++
++ramstage-$(CONFIG_GENERATE_PIRQ_TABLE) += irq_tables.c
+diff --git a/src/mainboard/abit/ab-pb4/board_info.txt b/src/mainboard/abit/ab-pb4/board_info.txt
+new file mode 100644
+index 0000000000..d616145424
+--- /dev/null
++++ b/src/mainboard/abit/ab-pb4/board_info.txt
+@@ -0,0 +1,8 @@
++Board name: ABit AB-PB4
++Category: retro
++Board URL: https://theretroweb.com/motherboards/s/abit-ab-pb4-rev-1.3
++ROM package: DIP-32
++ROM protocol: Parallel
++ROM socketed: y
++Flashrom support: y
++Release year: 1996
+diff --git a/src/mainboard/abit/ab-pb4/bootblock.c b/src/mainboard/abit/ab-pb4/bootblock.c
+new file mode 100644
+index 0000000000..d780ca6014
+--- /dev/null
++++ b/src/mainboard/abit/ab-pb4/bootblock.c
+@@ -0,0 +1,12 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include <bootblock_common.h>
++#include <superio/winbond/w83787if/winbond.h>
++// #include <superio/winbond/w83977tf/w83977tf.h>
++
++void bootblock_mainboard_early_init(void)
++{
++	//enable superio serial
++
++	winbond_enable_serial(0, CONFIG_TTYS0_BASE);
++}
+diff --git a/src/mainboard/abit/ab-pb4/cmos.layout b/src/mainboard/abit/ab-pb4/cmos.layout
+new file mode 100644
+index 0000000000..94556edabf
+--- /dev/null
++++ b/src/mainboard/abit/ab-pb4/cmos.layout
+@@ -0,0 +1,31 @@
++## SPDX-License-Identifier: GPL-2.0-only
++
++#####  <start-bit> <bit-length> <config> <config-id> <parameter-name>
++#####  e:enum h:hex s:string r:reserved
++
++
++# -----------------------------------------------------------------
++entries
++
++# -----------------------------------------------------------------
++0	120	r	0	reserved_memory
++128	4	e	14	floppy_a
++132	4	e	14	floppy_b
++
++# -----------------------------------------------------------------
++enumerations
++
++14      0       Not Installed
++14      1       5.25 360k
++14      2       5.25 1.2M
++14      3       3.5 720k
++14      4       3.5 1.44M
++14      5       3.5 2.88M
++14      6       5.25 160k
++14      7       5.25 180k
++14      8       5.25 320k
++
++# -----------------------------------------------------------------
++checksums
++
++checksum 392 983 984
+diff --git a/src/mainboard/abit/ab-pb4/config_seabios b/src/mainboard/abit/ab-pb4/config_seabios
+new file mode 100644
+index 0000000000..a797b75be8
+--- /dev/null
++++ b/src/mainboard/abit/ab-pb4/config_seabios
+@@ -0,0 +1,98 @@
++#
++# Automatically generated file; DO NOT EDIT.
++# SeaBIOS Configuration
++#
++
++#
++# General Features
++#
++CONFIG_COREBOOT=y
++# CONFIG_QEMU is not set
++# CONFIG_CSM is not set
++# CONFIG_QEMU_HARDWARE is not set
++CONFIG_THREADS=y
++CONFIG_RELOCATE_INIT=y
++CONFIG_BOOTMENU=y
++# CONFIG_BOOTSPLASH is not set
++CONFIG_BOOTORDER=y
++CONFIG_HOST_BIOS_GEOMETRY=y
++CONFIG_COREBOOT_FLASH=y
++CONFIG_LZMA=y
++CONFIG_CBFS_LOCATION=0
++# CONFIG_MULTIBOOT is not set
++CONFIG_ENTRY_EXTRASTACK=y
++CONFIG_MALLOC_UPPERMEMORY=y
++CONFIG_ROM_SIZE=0
++
++#
++# Hardware support
++#
++CONFIG_ATA=y
++CONFIG_ATA_DMA=y
++CONFIG_ATA_PIO32=y
++CONFIG_AHCI=y
++# CONFIG_SDCARD is not set
++# CONFIG_MEGASAS is not set
++CONFIG_FLOPPY=y
++# CONFIG_FLASH_FLOPPY is not set
++# CONFIG_NVME is not set
++CONFIG_PS2PORT=y
++CONFIG_USB=y
++CONFIG_USB_UHCI=y
++CONFIG_USB_OHCI=y
++#######CONFIG_USB_EHCI=y
++# CONFIG_USB_EHCI is not set
++#### CONFIG_USB_XHCI=y
++# CONFIG_USB_XHCI is not set
++CONFIG_USB_MSC=y
++#### CONFIG_USB_UAS=y
++# CONFIG_USB_UAS is not set
++CONFIG_USB_HUB=y
++CONFIG_USB_KEYBOARD=y
++CONFIG_USB_MOUSE=y
++CONFIG_SERIAL=y
++CONFIG_SERCON=y
++CONFIG_LPT=y
++CONFIG_RTC_TIMER=y
++CONFIG_HARDWARE_IRQ=y
++# CONFIG_PMTIMER is not set
++# CONFIG_TSC_TIMER is not set
++
++#
++# BIOS interfaces
++#
++CONFIG_DRIVES=y
++CONFIG_CDROM_BOOT=y
++CONFIG_CDROM_EMU=y
++CONFIG_PCIBIOS=y
++CONFIG_APMBIOS=y
++CONFIG_PNPBIOS=y
++CONFIG_OPTIONROMS=y
++CONFIG_PMM=y
++CONFIG_BOOT=y
++CONFIG_KEYBOARD=y
++CONFIG_KBD_CALL_INT15_4F=y
++CONFIG_MOUSE=y
++####3# CONFIG_S3_RESUME=y
++# CONFIG_S3_RESUME is not set
++CONFIG_VGAHOOKS=y
++# CONFIG_DISABLE_A20 is not set
++# CONFIG_TCGBIOS is not set
++
++#
++# VGA ROM
++#
++CONFIG_NO_VGABIOS=y
++# CONFIG_VGA_GEODEGX2 is not set
++# CONFIG_VGA_GEODELX is not set
++# CONFIG_VGA_COREBOOT is not set
++# CONFIG_BUILD_VGABIOS is not set
++CONFIG_VGA_EXTRA_STACK_SIZE=512
++
++#
++# Debugging
++#
++CONFIG_DEBUG_LEVEL=1
++CONFIG_DEBUG_SERIAL=y
++CONFIG_DEBUG_SERIAL_PORT=0x3f8
++# CONFIG_DEBUG_COREBOOT is not set
+diff --git a/src/mainboard/abit/ab-pb4/devicetree.cb b/src/mainboard/abit/ab-pb4/devicetree.cb
+new file mode 100644
+index 0000000000..a7b3b2d229
+--- /dev/null
++++ b/src/mainboard/abit/ab-pb4/devicetree.cb
+@@ -0,0 +1,22 @@
++chip northbridge/ali/m1489
++
++	device cpu_cluster 0 on ops cpu_bus_ops end
++
++	device domain 0 on
++		ops pci_domain_ops
++
++		device pci 00.0 on end # host bridge
++
++		device pci 03.0 on end # first PCI (near cpu)
++		device pci 04.0 on end # middle PCI
++		device pci 05.0 on end # last PCI
++
++		#chip superio/winbond/w83787if
++
++	end
++
++
++#	chip southbridge/ali/m1487
++
++
++end
+diff --git a/src/mainboard/abit/ab-pb4/irq_tables.c b/src/mainboard/abit/ab-pb4/irq_tables.c
+new file mode 100644
+index 0000000000..fde0c09252
+--- /dev/null
++++ b/src/mainboard/abit/ab-pb4/irq_tables.c
+@@ -0,0 +1,65 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include <arch/pirq_routing.h>
++#include <device/pci_ids.h>
++
++
++//TODO from working system?
++
++#define INTJ0   (0x10U | 0 | 0) //INT A/1?
++#define INTJ1   (0x20U | 8 | 0) //INT B/2?
++#define INTJ2   (0x40U | 0 | 1) //INT C/3?
++#define INTJ3   (0x80U | 8 | 1) //INT D/4?
++
++static const struct irq_routing_table pb4_irq_routing_table = {
++	PIRQ_SIGNATURE,
++	PIRQ_VERSION,
++	32 + 16 * CONFIG_IRQ_SLOT_COUNT,/* Max. number of devices on the bus */
++	0x00,			/* Interrupt router bus */
++	(0x00 << 3) | 0x0,	/* Interrupt router device */
++	0,			/* IRQs devoted exclusively to PCI usage */
++	PCI_VID_AL,		/* Vendor */
++	PCI_DID_AL_M1489,	/* Device */
++	0,			/* Miniport data */
++	{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, /* u8 rfu[11] */
++	0x54,			/* Checksum */
++	/* clang-format off */
++	{
++		/* bus,       dev|fn,   {link, bitmap}, {link, bitmap}, {link, bitmap}, {link, bitmap},  slot, rfu */
++		{0x00,(0x03 << 3)|0x0, {{INTJ0, 0xdef8}, {INTJ1, 0xdef8}, {INTJ2, 0xdef8}, {INTJ3, 0xdef8}}, 0x1, 0x0}, /* near cpu */
++		{0x00,(0x04 << 3)|0x0, {{INTJ1, 0xdef8}, {INTJ2, 0xdef8}, {INTJ3, 0xdef8}, {INTJ0, 0xdef8}}, 0x2, 0x0}, /* middle */
++		{0x00,(0x05 << 3)|0x0, {{INTJ2, 0xdef8}, {INTJ3, 0xdef8}, {INTJ0, 0xdef8}, {INTJ1, 0xdef8}}, 0x3, 0x0}, /* near PISA */
++		//TODO add PISA tree
++	}
++	/* clang-format on */
++};
++
++/*
++slot 1 nejbliz cpu      00:0?
++INTA    p57 - intj0
++INTB    p59 - intj1
++INTC    p56 - intj2
++INTD    p58 - intj3
++slot 2 prostredni       00:0?
++INTA    p59 - intj1
++INTB    p56 - intj2
++INTC    p58 - intj3
++INTD    p57 - intj0
++slot 3 nejbliz PISA     00:0?
++INTA    p56 - intj2
++INTB    p58 - intj3
++INTC    p57 - intj0
++INTD    p59 - intj1
++
++PISA
++intj0 je zapojenej na side A 14	 p57
++intj1 je zapojenej na side B 14	 p59
++intj2 je zapojenej na side A 8	  p56
++intj3 je zapojenej na side B 10	 p58
++*/
++
++
++unsigned long write_pirq_routing_table(unsigned long addr)
++{
++	return copy_pirq_routing_table(addr, &pb4_irq_routing_table);
++}
+diff --git a/src/mainboard/abit/ab-pb4/mainboard.c b/src/mainboard/abit/ab-pb4/mainboard.c
+new file mode 100644
+index 0000000000..d79550e2f6
+--- /dev/null
++++ b/src/mainboard/abit/ab-pb4/mainboard.c
+@@ -0,0 +1,20 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <device/pci_ops.h>
++// #include <southbridge/ali/m1489/m1489.h>
++
++/**
++ * Mainboard specific enables.
++ *
++ * @param chip_info Ignored
++ */
++static void mainboard_init(void *chip_info)
++{
++	//write 0x89/0x88 to IO 0x250 (EFER) to enable superio
++	//	outb(0x6f, PM_IO_BASE + 0x37);
++
++}
++
++struct chip_operations mainboard_ops = {
++	.init = mainboard_init
++};
+diff --git a/src/mainboard/abit/ab-pb4/romstage.c b/src/mainboard/abit/ab-pb4/romstage.c
+new file mode 100644
+index 0000000000..e4d5513854
+--- /dev/null
++++ b/src/mainboard/abit/ab-pb4/romstage.c
+@@ -0,0 +1,5 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
++#include <arch/io.h>
++//#include <southbridge/intel/i82371eb/i82371eb.h>
++//#include <northbridge/intel/i440bx/raminit.h>
+-- 
+2.46.1
+
